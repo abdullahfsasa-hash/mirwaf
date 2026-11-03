@@ -627,9 +627,6 @@ textarea.inp{min-height:96px;resize:vertical;line-height:1.7}
 @media (max-width:820px){.holo-in{grid-template-columns:1fr}.holo-proj{order:-1;height:clamp(300px,78vw,420px)}}
 @media (prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;transition:none}.holo-obj{animation:none;transform:rotateY(-22deg)}.holo-tilt{transition:none}}
 </style>
-</head>
-<body>
-
 
 <a class="skip" href="#view">انتقل إلى المحتوى</a>
 
@@ -1360,6 +1357,15 @@ const DICT = {
   'اكتشف المنتجات': 'Explore products',
   'مجسم هولوجرافي تفاعلي': 'Interactive hologram',
   'المس المجسم ليتفكك': 'Touch the hologram to break it apart',
+  'جارٍ إرسال الطلب…': 'Sending your order…',
+  'تعذّر الاتصال بالخادم. اختر الطلب عبر واتساب أو حاول لاحقًا.': 'Could not reach the server. Choose WhatsApp or try again later.',
+  'نفدت كمية أحد المنتجات. راجع سلتك بعد تحديث الأسعار والمخزون.': 'One of the items is out of stock. Please review your cart after the stock and prices update.',
+  'محاولات كثيرة، حاول بعد قليل.': 'Too many attempts, please try again shortly.',
+  'تعذّر إرسال الطلب، تحقق من البيانات وحاول مرة أخرى.': 'Could not send the order. Check your details and try again.',
+  'هذا المنتج نفد من المخزون.': 'This item is out of stock.',
+  'نفدت الكمية': 'Sold out',
+  'جارٍ التحقق من الدفع…': 'Verifying your payment…',
+  'لحظات ونؤكد لك العملية.': 'One moment while we confirm.',
   'طريقة الدفع': 'Payment method',
   'ادفع الآن إلكترونيًا': 'Pay online now',
   'مدى · فيزا · ماستركارد · ستس باي': 'mada · Visa · Mastercard · STC Pay',
@@ -1494,8 +1500,8 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => Number(n).toLocaleString('en-US');
-const IMG = n => `img/${n}.webp`;
-const IMGS = n => `img/${n}-s.webp`;
+const IMG = n => /^https:\/\//.test(n) ? n : `img/${n}.webp`;
+const IMGS = n => /^https:\/\//.test(n) ? n : `img/${n}-s.webp`;
 const byId = id => P.find(p => p.id === id);
 const WA = /^\d{8,15}$/.test(String(CONFIG.whatsapp || '')) ? String(CONFIG.whatsapp) : '';
 const clean = (s, n, nl) => String(s == null ? '' : s).replace(nl ? /[\u0000-\u0009\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g : /[\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g, ' ').replace(/[ \t]{2,}/g, ' ').trim().slice(0, n);
@@ -1539,6 +1545,36 @@ const FLAG = {
   blend: '<svg viewBox="0 0 30 30"><circle cx="12" cy="15" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="18" cy="15" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>'
 };
 
+/* ===================== الخادم (اختياري: إن غاب يعمل المتجر كما هو) ===================== */
+async function apiCall(path, body) {
+  try {
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), body ? 15000 : 3000);
+    const r = await fetch('/api/' + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal } : { signal: ac.signal });
+    clearTimeout(tm);
+    const j = await r.json();
+    if (!j || typeof j !== 'object' || !('ok' in j)) return null;
+    if (j.ok === false && j.error === 'server') return null;
+    return j;
+  } catch (e) { return null; }
+}
+async function loadCatalog() {
+  const d = await apiCall('catalog');
+  if (!d || !d.items) return;
+  if (d.freeFrom >= 0) CONFIG.freeFrom = d.freeFrom;
+  (d.extra || []).forEach(e => {
+    if (AR0.P.some(x => x.id === e.id)) return;
+    const np = { id: e.id, cat: e.cat, name: e.name, en: e.en || e.name, brand: e.brand || 'مرواف', sub: e.sub || '', price: e.price, old: e.old, img: e.img, gallery: [e.img], tags: [], short: e.short, desc: e.desc || e.short || '', details: [], specs: [] };
+    AR0.P.push(np); P.push(clone(np)); HAY[e.id] = [e.name, e.brand, e.sub, e.desc].filter(Boolean).join(' ');
+  });
+  AR0.P.forEach(p => { const o = d.items[p.id]; if (o) { p.price = o.price; p.old = o.old; p.stock = o.stock; p.hidden = !!o.hidden; } });
+  applyData();
+  for (let i = P.length - 1; i >= 0; i--) { const a = AR0.P.find(x => x.id === P[i].id); if (a && a.hidden) P.splice(i, 1); }
+  S.cart = S.cart.filter(i => byId(i.id)); saveCart(); updateBadge();
+  if (S.coupon) { const r = await apiCall('coupon', { code: S.coupon }); if (r && r.ok) S.cp = { code: r.code, pct: r.pct }; else if (r) { S.coupon = ''; S.cp = null; saveCart(); } }
+  if (S.open === 'cart') renderCart();
+  if (S.r && S.r.v !== 'pay' && S.r.v !== 'done') render(true);
+}
+
 /* ===================== الحالة ===================== */
 const arr = k => { const x = store.get(k, []); return Array.isArray(x) ? x : []; };
 const S = {
@@ -1555,16 +1591,20 @@ saveCart(); store.set('mirwaf.wish', S.wish);
 
 /* ===================== السلة ===================== */
 const ckey = i => i.id + '|' + (i.v || '');
-const couponOk = () => !!S.coupon && S.coupon.trim().toUpperCase() === CONFIG.code;
+S.cp = S.coupon && S.coupon.trim().toUpperCase() === CONFIG.code ? { code: CONFIG.code, pct: CONFIG.pct } : null;
+const couponOk = () => !!S.cp && !!S.coupon && S.coupon.trim().toUpperCase() === S.cp.code;
+const cpPct = () => S.cp ? S.cp.pct : CONFIG.pct;
+const cpCode = () => S.cp ? S.cp.code : CONFIG.code;
 function totals() {
   const lines = S.cart.map(i => ({ ...i, p: byId(i.id), key: ckey(i) })).filter(l => l.p);
   const count = lines.reduce((a, l) => a + l.qty, 0);
   const sub = lines.reduce((a, l) => a + l.p.price * l.qty, 0);
-  const d = couponOk() ? Math.round(sub * CONFIG.pct / 100) : 0;
+  const d = couponOk() ? Math.round(sub * cpPct() / 100) : 0;
   const net = sub - d;
   return { lines, count, sub, d, net, free: net >= CONFIG.freeFrom && sub > 0, left: Math.max(0, CONFIG.freeFrom - net), total: net };
 }
 function cartAdd(id, v, qty = 1, quiet) {
+  const sp = byId(id); if (sp && sp.stock === 0) { toast('هذا المنتج نفد من المخزون.'); return; }
   const k = id + '|' + (v || '');
   const ex = S.cart.find(i => ckey(i) === k);
   if (ex) ex.qty = Math.min(20, ex.qty + qty); else S.cart.push({ id, v: v || '', qty });
@@ -1618,22 +1658,26 @@ function renderCart() {
       <input class="inp" id="cpnIn" placeholder="كود الخصم" value="${esc(S.cpnDraft || (couponOk() ? S.coupon : ''))}" autocomplete="off" dir="ltr" data-end>
       <button class="btn btn--line btn--sm" type="submit">تطبيق</button>
     </form>
-    <div class="msg ${S.cpnMsg.startsWith('!') ? 'msg--err' : 'msg--ok'}" id="cpnMsg">${esc(S.cpnMsg.replace(/^!/, '')) || (couponOk() ? `تم تطبيق الكود ${esc(CONFIG.code)}` : '')}</div>
+    <div class="msg ${S.cpnMsg.startsWith('!') ? 'msg--err' : 'msg--ok'}" id="cpnMsg">${esc(S.cpnMsg.replace(/^!/, '')) || (couponOk() ? `تم تطبيق الكود ${esc(cpCode())}` : '')}</div>
     <div class="sum num">
       <div><span>المجموع الفرعي</span><span>${fmt(t.sub)} ريال</span></div>
-      ${t.d ? `<div class="disc"><span>خصم الكود (${CONFIG.pct}%)</span><span>− ${fmt(t.d)} ريال</span></div>` : ''}
+      ${t.d ? `<div class="disc"><span>خصم الكود (${cpPct()}%)</span><span>− ${fmt(t.d)} ريال</span></div>` : ''}
       <div><span>التوصيل</span><span>${t.free ? 'مجاني' : 'يُحدد عند التأكيد'}</span></div>
       <div class="tot"><span>الإجمالي</span><span>${fmt(t.total)} ريال</span></div>
     </div>
     <a class="btn btn--full" href="#checkout" data-nav>إتمام الطلب ${ico('arrowL', 18)}</a>
     <button class="btn btn--line btn--full" type="button" data-act="close">متابعة التسوق</button>`;
 }
-function applyCoupon(code) {
+async function applyCoupon(code) {
   code = (code || '').trim();
   S.cpnDraft = code;
   if (!code) { S.cpnMsg = '!أدخل كود الخصم أولًا.'; }
-  else if (code.toUpperCase() === CONFIG.code) { S.coupon = CONFIG.code; S.cpnMsg = `تم تطبيق الكود ${CONFIG.code}، خصم ${CONFIG.pct}% على طلبك.`; S.cpnDraft = ''; }
-  else { S.coupon = ''; S.cpnMsg = '!الكود غير صحيح. تأكد من كتابته كما وصلك.'; }
+  else {
+    const r = await apiCall('coupon', { code });
+    if (r && r.ok) { S.cp = { code: r.code, pct: r.pct }; S.coupon = r.code; S.cpnMsg = `تم تطبيق الكود ${r.code}، خصم ${r.pct}% على طلبك.`; S.cpnDraft = ''; }
+    else if (!r && code.toUpperCase() === CONFIG.code) { S.cp = { code: CONFIG.code, pct: CONFIG.pct }; S.coupon = CONFIG.code; S.cpnMsg = `تم تطبيق الكود ${CONFIG.code}، خصم ${CONFIG.pct}% على طلبك.`; S.cpnDraft = ''; }
+    else { S.coupon = ''; S.cp = null; S.cpnMsg = '!الكود غير صحيح. تأكد من كتابته كما وصلك.'; }
+  }
   saveCart(); renderCart(); if (S.r.v === 'checkout') render(true);
 }
 
@@ -1857,7 +1901,7 @@ function vHome() {
   ${holoStage()}
   <section class="sec" style="padding-top:34px"><div class="wrap">
     <div class="sec-head"><h2 class="sec-title">اختيارات مرواف</h2><a class="sec-link" href="#shop" data-nav><span>عرض جميع المنتجات</span><span class="circ">${ico('arrowL', 14)}</span></a></div>
-    <div class="grid">${FEATURED.map(id => card(byId(id))).join('')}</div>
+    <div class="grid">${FEATURED.filter(byId).map(id => card(byId(id))).join('')}</div>
   </div></section>
   <section class="sec sec--tight"><div class="wrap"><div class="values">
     <div class="val"><span class="vi">${ico('bean', 22)}</span><div><b>محاصيل مختارة بعناية</b><span>بن مختص من محامص سعودية وأصول متنوعة.</span></div></div>
@@ -1929,7 +1973,7 @@ function vPdp() {
         <div class="eyebrow">${cat.en}</div>
         <h1>${esc(p.name)}</h1>
         <p class="sub">${esc(whoLine)}</p>
-        <div class="priceline num"><b>${fmt(p.price)} ريال</b>${p.old ? `<s>${fmt(p.old)} ريال</s><span class="off">وفّر ${sale}%</span>` : ''}</div>
+        <div class="priceline num"><b>${fmt(p.price)} ريال</b>${p.stock === 0 ? '<span class="off">نفدت الكمية</span>' : ''}${p.old ? `<s>${fmt(p.old)} ريال</s><span class="off">وفّر ${sale}%</span>` : ''}</div>
         <p class="desc">${esc(p.short || p.desc)}</p>${notes}
         ${variants}
         <div class="buy">
@@ -2000,7 +2044,7 @@ function vPost() {
       <div class="article__img"><img src="${IMG(a.img)}" alt="" width="1000" height="1000"></div>${body}
     </article></div>
     <section class="sec" style="padding-top:10px"><div class="wrap"><div class="sec-head"><h2 class="sec-title">منتجات ذات صلة</h2></div>
-    <div class="grid grid--3">${a.related.map(id => card(byId(id))).join('')}</div></div></section>`;
+    <div class="grid grid--3">${a.related.filter(byId).map(id => card(byId(id))).join('')}</div></div></section>`;
 }
 
 /* ----- الدفع ----- */
@@ -2011,14 +2055,14 @@ function orderText(o) {
   return ['🛒 طلب جديد من متجر مرواف', `رقم الطلب: ${o.ref}`, `التاريخ: ${when}`, '',
     '👤 بيانات العميل', `الاسم: ${o.c.name}`, `الجوال: ${o.c.phone}`, `المدينة: ${o.c.city}`, `العنوان: ${o.c.addr}`, o.c.notes ? `ملاحظات: ${o.c.notes}` : null, '',
     '☕ المنتجات', ...L, '',
-    o.pay ? `💳 الدفع الإلكتروني: ${o.pay.status === 'paid' ? 'تم الدفع' : 'غير مكتمل'} · رقم العملية ${o.pay.id}` : null, '',
-    '💰 الملخص', `المجموع الفرعي: ${fmt(o.sub)} ريال`, o.d ? `خصم الكود ${CONFIG.code} (${CONFIG.pct}%): -${fmt(o.d)} ريال` : null, `التوصيل: ${o.free ? 'مجاني' : 'يُحدد عند التأكيد'}`, `الإجمالي: ${fmt(o.total)} ريال`
+    o.pay ? `💳 الدفع الإلكتروني: ${o.pay.status === 'paid' ? (o.pay.ok ? 'تم الدفع (تم التحقق)' : 'تم الدفع (بانتظار تأكيد التاجر)') : 'غير مكتمل'} · رقم العملية ${o.pay.id}` : null, '',
+    '💰 الملخص', `المجموع الفرعي: ${fmt(o.sub)} ريال`, o.d ? `خصم الكود ${o.coupon || CONFIG.code} (${o.pct || CONFIG.pct}%): -${fmt(o.d)} ريال` : null, `التوصيل: ${o.free ? 'مجاني' : 'يُحدد عند التأكيد'}`, `الإجمالي: ${fmt(o.total)} ريال`
   ].filter(x => x !== null).join('\n');
 }
 function summaryHTML(t) {
   return `<div class="sum num">
     <div><span>المجموع الفرعي</span><span>${fmt(t.sub)} ريال</span></div>
-    ${t.d ? `<div class="disc"><span>خصم الكود (${CONFIG.pct}%)</span><span>− ${fmt(t.d)} ريال</span></div>` : ''}
+    ${t.d ? `<div class="disc"><span>خصم الكود (${cpPct()}%)</span><span>− ${fmt(t.d)} ريال</span></div>` : ''}
     <div><span>التوصيل</span><span>${t.free ? 'مجاني' : 'يُحدد عند التأكيد'}</span></div>
     <div class="tot"><span>الإجمالي</span><span>${fmt(t.total)} ريال</span></div></div>`;
 }
@@ -2030,6 +2074,7 @@ function vCheckout() {
     <nav class="crumbs" aria-label="مسار التنقل"><a href="#home" data-nav>الرئيسية</a><span>/</span><span aria-current="page">إتمام الطلب</span></nav>
     <div class="co">
       <form id="coForm" novalidate>
+        <input id="f-site" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;inset-inline-start:-9999px;width:1px;height:1px;opacity:0">
         <h1>إتمام الطلب</h1><p class="lead">أدخل بيانات التوصيل وسنجهّز طلبك.</p>
         <div class="fields">
           ${fld('f-name', 'الاسم الكامل', 'autocomplete="name" maxlength="80" required', true)}
@@ -2049,7 +2094,7 @@ function vCheckout() {
         ${shipBar(t)}
         ${t.lines.map(l => `<div class="li" style="grid-template-columns:64px 1fr"><img src="${IMGS(l.p.img)}" alt="" width="64" height="64" style="width:64px;height:64px"><div><div class="li__n" style="font-size:14.5px">${esc(l.p.name)}</div>${l.v ? `<div class="li__v">${esc(vdisp(l.p, l.v))}</div>` : ''}<div class="li__r"><span class="li__v num">الكمية ${l.qty}</span><b class="num" style="font:600 14.5px var(--font-display)">${fmt(l.p.price * l.qty)} ريال</b></div></div></div>`).join('')}
         <form class="cpn" id="cpnForm" style="margin-block:16px 4px" novalidate><label class="sr" for="cpnIn">كود الخصم</label><input class="inp" id="cpnIn" placeholder="كود الخصم" value="${esc(S.cpnDraft || (couponOk() ? S.coupon : ''))}" dir="ltr" data-end autocomplete="off"><button class="btn btn--line btn--sm" type="submit">تطبيق</button></form>
-        <div class="msg ${S.cpnMsg.startsWith('!') ? 'msg--err' : 'msg--ok'}" id="cpnMsg">${esc(S.cpnMsg.replace(/^!/, '')) || (couponOk() ? `تم تطبيق الكود ${CONFIG.code}` : '')}</div>
+        <div class="msg ${S.cpnMsg.startsWith('!') ? 'msg--err' : 'msg--ok'}" id="cpnMsg">${esc(S.cpnMsg.replace(/^!/, '')) || (couponOk() ? `تم تطبيق الكود ${cpCode()}` : '')}</div>
         <div style="margin-top:10px">${summaryHTML(t)}</div>
       </aside>
     </div></div>`;
@@ -2076,6 +2121,7 @@ function vPolicies() {
 function vDone() {
   const o = S.last;
   if (!o) return `<div class="wrap"><div class="empty" style="padding-block:90px"><a class="btn" href="#home" data-nav>العودة للرئيسية</a></div></div>`;
+  if (o.pay && o.pay.status === 'checking') return `<div class="wrap"><div class="done"><h1>جارٍ التحقق من الدفع…</h1><p class="note">لحظات ونؤكد لك العملية.</p></div></div>`;
   if (o.pay && o.pay.status !== 'paid') return `<div class="wrap"><div class="done"><span class="ok" style="background:var(--sale)">${ico('close', 30)}</span>
     <h1>لم تكتمل عملية الدفع</h1><p class="note">لم يُخصم أي مبلغ. حاول مرة أخرى أو اختر واتساب.</p>
     <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center"><a class="btn" href="#pay" data-nav>حاول مرة أخرى</a>${WA ? `<a class="btn btn--wa" href="${waUrl(o)}" target="_blank" rel="noopener noreferrer">${ico('wa', 20)} أكمل عبر واتساب</a>` : ''}</div></div></div>`;
@@ -2315,7 +2361,7 @@ document.addEventListener('input', e => {
   if (e.target.id === 'cpnIn') S.cpnDraft = e.target.value;
   if (e.target.closest('.fld')) { e.target.removeAttribute('aria-invalid'); const er = $('#' + e.target.id + '-e'); if (er) er.textContent = ''; }
 });
-document.addEventListener('submit', e => {
+document.addEventListener('submit', async e => {
   const f = e.target;
   if (f.id === 'cpnForm') { e.preventDefault(); applyCoupon($('#cpnIn').value); return; }
   if (f.id === 'coForm') {
@@ -2335,6 +2381,15 @@ document.addEventListener('submit', e => {
     };
     const pm = (document.querySelector('input[name="pm"]:checked') || {}).value;
     o.method = pm === 'card' && PAY_ON ? 'card' : 'wa';
+    o.coupon = couponOk() ? cpCode() : ''; o.pct = o.d ? cpPct() : 0;
+    const btn = $('#coBtn'), lbl = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'جارٍ إرسال الطلب…'; }
+    const rst = () => { if (btn) { btn.disabled = false; btn.innerHTML = lbl; } };
+    S.cid = S.cid || ('c' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36));
+    const sr = await apiCall('orders', { c: o.c, items: t.lines.map(l => ({ id: l.id, v: l.v, qty: l.qty })), coupon: o.coupon, method: o.method, cid: S.cid, lang: LANG, website: ($('#f-site') || {}).value || '' });
+    if (sr && sr.ok) { Object.assign(o, { ref: sr.ref, at: sr.at, sub: sr.sub, d: sr.d, free: sr.free, total: sr.total, pct: sr.pct, coupon: sr.coupon }); S.cid = ''; }
+    else if (sr) { rst(); toast(sr.error === 'stock' ? 'نفدت كمية أحد المنتجات. راجع سلتك بعد تحديث الأسعار والمخزون.' : sr.error === 'rate' || sr.error === 'busy' ? 'محاولات كثيرة، حاول بعد قليل.' : 'تعذّر إرسال الطلب، تحقق من البيانات وحاول مرة أخرى.'); if (sr.error === 'stock') loadCatalog(); return; }
+    else if (o.method === 'card') { rst(); toast('تعذّر الاتصال بالخادم. اختر الطلب عبر واتساب أو حاول لاحقًا.'); return; }
     S.orders.unshift({ ref: o.ref, at: o.at, count: o.count, total: o.total }); store.set('mirwaf.orders', S.orders.slice(0, 20)); S.last = o;
     S.cart = []; saveCart(); updateBadge();
     if (o.method === 'card') { store.set('mirwaf.pending', o); go('pay'); return; }
@@ -2383,7 +2438,18 @@ $('#footCats').innerHTML = footCatsHTML();
     const q = new URLSearchParams(location.search), id = q.get('id'), st = q.get('status');
     if (id && st) {
       const o = loadPending();
-      if (o) { o.pay = { id: clean(id, 64), status: clean(st, 16) }; S.last = o; if (st === 'paid') store.set('mirwaf.pending', null); }
+      if (o) {
+        o.pay = { id: clean(id, 64), status: st === 'paid' ? 'checking' : clean(st, 16) }; S.last = o;
+        if (st === 'paid') (async () => {
+          const r = await apiCall('pay/verify', { ref: o.ref, id: o.pay.id });
+          if (!r) { o.pay.status = 'paid'; }
+          else if (r.ok && r.verified) { o.pay.status = 'paid'; o.pay.ok = 1; }
+          else if (r.ok && r.status === 'unverified') { o.pay.status = 'paid'; }
+          else o.pay.status = 'review';
+          if (o.pay.status === 'paid') store.set('mirwaf.pending', null);
+          if (S.r && S.r.v === 'done') render(true);
+        })();
+      }
       history.replaceState(null, '', location.pathname + '#done');
     }
   } catch (e) { }
@@ -2393,9 +2459,7 @@ chatInit(); updateBadge();
 route(location.hash.slice(1) || 'home');
 if (isEn()) trTree(document.body);
 startObserver();
+loadCatalog();
 
 })();
 </script>
-
-</body>
-</html>

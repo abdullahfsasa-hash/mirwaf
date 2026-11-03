@@ -1,0 +1,17 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/admin
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+/admin/*
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+/api/*
+  X-Robots-Tag: noindex
+  Cache-Control: no-store

@@ -597,7 +597,8 @@ textarea.inp{min-height:96px;resize:vertical;line-height:1.7}
 @keyframes holoSpin{to{transform:rotateY(360deg)}}
 @keyframes holoFlick{0%,92%,100%{opacity:1}93%{opacity:.78}95%{opacity:1}97%{opacity:.86}}
 @keyframes holoSwap{0%{opacity:0;transform:scale(.94)}100%{opacity:1;transform:scale(1)}}
-.holo-hint{position:absolute;bottom:0;inset-inline:0;text-align:center;color:#8FA698;font-size:13px}
+.holo-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:1}
+.holo-hint{z-index:3;position:absolute;bottom:0;inset-inline:0;text-align:center;color:#8FA698;font-size:13px}
 
 /* فويل هولوجرافي على كود الخصم */
 .foil{position:relative;--fx:70%;--fy:30%}
@@ -1352,13 +1353,13 @@ const DICT = {
   'متابعة إلى الدفع ·': 'Continue to payment ·',
   'رقم العملية:': 'Payment ID:',
   'قهوتك، بمنظور جديد': 'Your coffee, from a new angle',
-  'أدر المجسم بإصبعك أو بالمؤشر، ثم اختر ما تريد اكتشافه: الشعار أو حبة البن أو الفنجان أو أدوات التحضير.': 'Drag to turn the hologram, then pick what to explore: the mark, a bean, a cup or brewing gear.',
+  'المس المجسم أو مرّر عليه فيتفكك ثم يعود، ثم اختر ما تريد اكتشافه: الشعار أو حبة البن أو الفنجان أو أدوات التحضير.': 'Touch or hover over the hologram and it breaks apart, then re-forms. Pick what to explore: the mark, a bean, a cup or brewing gear.',
   'الشعار': 'The mark',
   'حبة بن': 'Bean',
   'فنجان': 'Cup',
   'اكتشف المنتجات': 'Explore products',
   'مجسم هولوجرافي تفاعلي': 'Interactive hologram',
-  'اسحب لتدوير المجسم': 'Drag to rotate',
+  'المس المجسم ليتفكك': 'Touch the hologram to break it apart',
   'طريقة الدفع': 'Payment method',
   'ادفع الآن إلكترونيًا': 'Pay online now',
   'مدى · فيزا · ماستركارد · ستس باي': 'mada · Visa · Mastercard · STC Pay',
@@ -1688,34 +1689,96 @@ function holoStage() {
   return `<section class="holo-stage" aria-labelledby="holoT"><div class="wrap holo-in">
     <div class="holo-copy rv">
       <h2 id="holoT">قهوتك، بمنظور جديد</h2>
-      <p>أدر المجسم بإصبعك أو بالمؤشر، ثم اختر ما تريد اكتشافه: الشعار أو حبة البن أو الفنجان أو أدوات التحضير.</p>
+      <p>المس المجسم أو مرّر عليه فيتفكك ثم يعود، ثم اختر ما تريد اكتشافه: الشعار أو حبة البن أو الفنجان أو أدوات التحضير.</p>
       <div class="holo-chips" role="group" aria-label="${'مجسم هولوجرافي تفاعلي'}">${HOLO_KEYS.map(k => `<button class="chip3" type="button" data-act="holo" data-k="${k}" aria-pressed="${k === 'mark'}">${HOLO[k].n}</button>`).join('')}</div>
       <a class="btn" href="#shop" data-nav>اكتشف المنتجات ${ico('arrowL', 18)}</a>
     </div>
     <div class="holo-proj" id="holoP" role="img" aria-label="مجسم هولوجرافي تفاعلي" tabindex="0">
       <div class="holo-beam"></div><div class="holo-base"></div>
-      <div class="holo-tilt" id="holoT3"><div class="holo-obj" id="holoO" style="--mark:url('${HOLO.mark.u}')">${holoLayers()}</div></div>
+      <canvas class="holo-canvas" id="holoC" aria-hidden="true"></canvas>
       <div class="holo-scan"></div>
-      <div class="holo-hint">اسحب لتدوير المجسم</div>
+      <div class="holo-hint">المس المجسم ليتفكك</div>
     </div></div></section>`;
 }
-function holoPick(k) {
-  const o = $('#holoO'); if (!o || !HOLO[k]) return;
-  o.style.setProperty('--mark', `url("${HOLO[k].u}")`);
-  o.classList.remove('swap'); void o.offsetWidth; o.classList.add('swap');
-  $$('[data-act="holo"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.k === k)));
+const HP = { pts: {}, cur: 'mark', parts: [], raf: 0, t0: 0, on: false, ptr: null, hold: 0, ang: -0.35, W: 0, H: 0, dpr: 1, ctx: null, cv: null, N: 1700 };
+function holoPoints(k) {
+  return new Promise(res => {
+    if (HP.pts[k]) return res(HP.pts[k]);
+    const img = new Image();
+    img.onload = () => {
+      const w = 200, h = Math.round(200 * (img.naturalHeight || 240) / (img.naturalWidth || 200)) || 240;
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, w, h);
+      const d = g.getImageData(0, 0, w, h).data, out = [];
+      for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) if (d[(y * w + x) * 4 + 3] > 110) out.push([(x / w - .5) * 2, (y / h - .5) * 2 * (h / w)]);
+      HP.pts[k] = out; res(out);
+    };
+    img.onerror = () => res([]);
+    img.src = HOLO[k].u;
+  });
 }
-(function holoPointer() {
-  let raf = 0, nx = 0, ny = 0, el = null, drag = false;
-  const apply = () => { raf = 0; const t = $('#holoT3'); if (t) { t.style.setProperty('--ry', (nx * 38).toFixed(1) + 'deg'); t.style.setProperty('--rx', (-ny * 22).toFixed(1) + 'deg'); } };
-  const move = e => { const p = e.target.closest && e.target.closest('#holoP'); if (!p) return; const r = p.getBoundingClientRect(); nx = (e.clientX - r.left) / r.width - .5; ny = (e.clientY - r.top) / r.height - .5; if (!raf) raf = requestAnimationFrame(apply); };
-  document.addEventListener('pointermove', e => {
-    move(e);
-    const f = e.target.closest && e.target.closest('.foil'); if (f) { const r = f.getBoundingClientRect(); f.style.setProperty('--fx', ((e.clientX - r.left) / r.width * 100).toFixed(0) + '%'); f.style.setProperty('--fy', ((e.clientY - r.top) / r.height * 100).toFixed(0) + '%'); }
-  }, { passive: true });
-  document.addEventListener('pointerleave', () => { nx = ny = 0; apply(); }, true);
-  document.addEventListener('pointerout', e => { if (e.target.id === 'holoP') { nx = ny = 0; if (!raf) raf = requestAnimationFrame(apply); } });
-})();
+function holoAssign(pts, burst) {
+  if (!pts.length) return;
+  if (!HP.parts.length) {
+    for (let i = 0; i < HP.N; i++) HP.parts.push({ x: 0, y: 0, z: 0, px: (Math.random() - .5) * 3, py: (Math.random() - .5) * 3, pz: (Math.random() - .5) * 2, vx: 0, vy: 0, vz: 0, h: Math.random() });
+  }
+  const idx = Array.from({ length: HP.parts.length }, (_, i) => i).sort(() => Math.random() - .5);
+  HP.parts.forEach((p, i) => { const t = pts[idx[i] % pts.length]; p.x = t[0] + (Math.random() - .5) * .012; p.y = t[1] + (Math.random() - .5) * .012; p.z = (Math.random() - .5) * .22; });
+  if (burst) holoScatter(1.0);
+}
+function holoScatter(power) {
+  HP.hold = performance.now() + 650;
+  HP.parts.forEach(p => { const a = Math.random() * 6.283, r = (.5 + Math.random()) * power * .06; p.vx += Math.cos(a) * r; p.vy += Math.sin(a) * r - .01; p.vz += (Math.random() - .5) * r; });
+}
+function holoSize() {
+  const cv = HP.cv; if (!cv) return;
+  const r = cv.getBoundingClientRect(); HP.dpr = Math.min(2, window.devicePixelRatio || 1);
+  HP.W = Math.max(1, Math.round(r.width * HP.dpr)); HP.H = Math.max(1, Math.round(r.height * HP.dpr));
+  if (cv.width !== HP.W || cv.height !== HP.H) { cv.width = HP.W; cv.height = HP.H; }
+}
+function holoFrame(now) {
+  HP.raf = 0; const cv = HP.cv; if (!cv || !document.body.contains(cv)) { HP.on = false; return; }
+  const g = HP.ctx, W = HP.W, H = HP.H, reduce = HP.reduce, dt = Math.min(48, now - (HP.t0 || now)); HP.t0 = now;
+  if (!reduce) HP.ang += dt * 0.00055;
+  if (!reduce && !HP.hold && now > (HP.auto || 0)) { holoScatter(1.1); HP.auto = now + 6500 + Math.random() * 2000; }
+  const free = now < HP.hold, k = free ? 0.0 : 0.1, damp = free ? 0.965 : 0.84;
+  const sc = Math.min(W * 0.34, H * 0.30), cx = W / 2, cy = H * 0.46, ca = Math.cos(HP.ang), sa = Math.sin(HP.ang);
+  const ptr = HP.ptr; g.clearRect(0, 0, W, H); g.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < HP.parts.length; i++) {
+    const p = HP.parts[i];
+    // الهدف بعد الدوران حول المحور الرأسي
+    const tx = p.x * ca + p.z * sa, tz = -p.x * sa + p.z * ca;
+    p.vx += (tx - p.px) * k; p.vy += (p.y - p.py) * k; p.vz += (tz - p.pz) * k;
+    if (ptr) { const dx = p.px - ptr.x, dy = p.py - ptr.y, d2 = dx * dx + dy * dy; if (d2 < 0.09) { const f = (0.09 - d2) * 0.9 / (Math.sqrt(d2) + 0.02); p.vx += dx * f * .06; p.vy += dy * f * .06; p.vz += (Math.random() - .5) * .02; } }
+    p.vx *= damp; p.vy *= damp; p.vz *= damp; p.px += p.vx; p.py += p.vy; p.pz += p.vz;
+    const per = 1.7 / (1.7 + p.pz), X = cx + p.px * sc * per, Y = cy + p.py * sc * per;
+    const hue = (170 + p.h * 130 + (p.px * 40) + now * 0.012) % 360, a = Math.max(.12, Math.min(1, .55 + p.pz * -.6));
+    g.fillStyle = 'hsla(' + hue.toFixed(0) + ',95%,66%,' + a.toFixed(2) + ')';
+    const s2 = (1.15 + p.h * 1.1) * HP.dpr * per; g.fillRect(X, Y, s2, s2);
+  }
+  if (HP.on) HP.raf = requestAnimationFrame(holoFrame);
+}
+function holoPick(k) {
+  if (!HOLO[k]) return; HP.cur = k;
+  $$('[data-act="holo"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.k === k)));
+  holoPoints(k).then(pts => { if (HP.cur === k) holoAssign(pts, true); });
+}
+function holoInit() {
+  const cv = $('#holoC'); if (!cv) { HP.on = false; return; }
+  HP.cv = cv; HP.ctx = cv.getContext('2d'); HP.parts = []; HP.reduce = matchMedia('(prefers-reduced-motion: reduce)').matches; HP.cur = 'mark'; HP.hold = 0; HP.auto = performance.now() + 3200;
+  holoSize();
+  holoPoints('mark').then(pts => { holoAssign(pts, false); HP.parts.forEach(p => { p.px = p.x; p.py = p.y; p.pz = p.z; }); if (HP.reduce) { HP.ang = -0.35; } });
+  const box = $('#holoP');
+  const pos = e => { const r = cv.getBoundingClientRect(), sc = Math.min(r.width * 0.34, r.height * 0.30); HP.ptr = { x: (e.clientX - r.left - r.width / 2) / sc, y: (e.clientY - r.top - r.height * 0.46) / sc }; };
+  box.addEventListener('pointermove', pos, { passive: true });
+  box.addEventListener('pointerleave', () => { HP.ptr = null; });
+  box.addEventListener('pointerdown', e => { pos(e); holoScatter(1.6); });
+  box.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); holoScatter(1.6); } });
+  if (!HP.io) { HP.io = new IntersectionObserver(es => es.forEach(en => { HP.vis = en.isIntersecting; if (HP.vis && !HP.on && HP.cv) { HP.on = true; HP.t0 = 0; HP.raf = requestAnimationFrame(holoFrame); } else if (!HP.vis) { HP.on = false; } })); }
+  HP.io.disconnect(); HP.io.observe(box);
+}
+window.addEventListener('resize', () => { if (HP.cv) holoSize(); });
+document.addEventListener('pointermove', e => { const f = e.target.closest && e.target.closest('.foil'); if (f) { const r = f.getBoundingClientRect(); f.style.setProperty('--fx', ((e.clientX - r.left) / r.width * 100).toFixed(0) + '%'); f.style.setProperty('--fy', ((e.clientY - r.top) / r.height * 100).toFixed(0) + '%'); } }, { passive: true });
 
 /* ===================== الدفع الإلكتروني (Moyasar) ===================== */
 const PAY_ON = /^pk_(test|live)_[A-Za-z0-9]{10,}$/.test(String(CONFIG.moyasarKey || ''));
@@ -2073,6 +2136,7 @@ function render(keepScroll) {
   view.innerHTML = h;
   if (r.v === 'pdp') pdpSync();
   if (r.v === 'pay') mountPay();
+  if (r.v === 'home') holoInit(); else HP.on = false;
   revealInit();
   if (!keepScroll) { view.classList.remove('view'); void view.offsetWidth; view.classList.add('view'); }
   else window.scrollTo(0, y);

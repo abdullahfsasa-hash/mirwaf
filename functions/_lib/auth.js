@@ -21,6 +21,9 @@ export async function makeCookie(env) {
 }
 export const clearCookie = () => `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
 
+// عند الخروج نسجّل وقتا عاما: أي جلسة صدرت قبله تصبح لاغية فورا (حتى لو سُرقت الكوكي قبل الخروج).
+export const revokeSessions = env => env.DB.prepare("INSERT INTO settings (k, v) VALUES ('admin_revoke_before', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").bind(String(Date.now())).run();
+
 export async function isAdmin(request, env) {
   if (!adminEnabled(env)) return false;
   const m = new RegExp('(?:^|; )' + COOKIE + '=([^;]+)').exec(request.headers.get('cookie') || '');
@@ -29,7 +32,10 @@ export async function isAdmin(request, env) {
   if (parts.length !== 3) return false;
   const exp = Number(parts[0]);
   if (!(exp > Date.now())) return false;
-  return safeEqual(parts[2], await hmac(env, parts[0] + '.' + parts[1]));
+  if (!(await safeEqual(parts[2], await hmac(env, parts[0] + '.' + parts[1])))) return false;
+  const row = await env.DB.prepare("SELECT v FROM settings WHERE k = 'admin_revoke_before'").first();
+  const cutoff = row ? Number(row.v) : 0;
+  return (exp - TTL) >= cutoff; // وقت إصدار الكوكي = exp - TTL
 }
 
 // حد محاولات الدخول الفاشلة: 8 محاولات خلال 15 دقيقة لكل زائر.

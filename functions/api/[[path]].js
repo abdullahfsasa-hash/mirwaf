@@ -1,7 +1,7 @@
 // واجهة المتجر + لوحة الأدمن. مسار واحد يوزّع الطلبات: /api/<...>
 import { J, clean, dig, ipHash, sameOrigin, readJson } from '../_lib/util.js';
 import { init, effectiveCatalog, findCoupon, getFreeFrom, setSetting } from '../_lib/db.js';
-import { isAdmin, adminEnabled, makeCookie, clearCookie, loginAttempt } from '../_lib/auth.js';
+import { isAdmin, adminEnabled, makeCookie, clearCookie, loginAttempt, revokeSessions } from '../_lib/auth.js';
 
 const STATUSES = ['new', 'confirmed', 'shipped', 'done', 'cancelled'];
 const CATS = ['beans', 'cups', 'gear', 'filters', 'matcha'];
@@ -36,7 +36,7 @@ export async function onRequest(context) {
         if (!sameOrigin(request) || request.headers.get('x-mw') !== '1') return J({ ok: false, error: 'csrf' }, 403);
       }
       if (b === 'me' && m === 'GET') return J({ ok: true });
-      if (b === 'logout' && m === 'POST') return J({ ok: true }, 200, { 'set-cookie': clearCookie() });
+      if (b === 'logout' && m === 'POST') { await revokeSessions(env); return J({ ok: true }, 200, { 'set-cookie': clearCookie() }); }
       if (b === 'summary' && m === 'GET') return summary(env);
       if (b === 'orders' && !c && m === 'GET') return ordersList(request, env);
       if (b === 'orders' && c && m === 'POST') return orderUpdate(request, env, c, path[3]);

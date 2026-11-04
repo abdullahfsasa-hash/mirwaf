@@ -45,6 +45,7 @@ export async function onRequest(context) {
       if (b === 'products' && !c && m === 'POST') return productCreate(request, env);
       if (b === 'products' && c && m === 'POST') return productUpdate(request, env, c);
       if (b === 'products' && c && m === 'DELETE') return productDelete(env, c);
+      if (b === 'upload' && m === 'POST') return uploadImage(request, env);
       if (b === 'coupons' && m === 'GET') return couponsList(env);
       if (b === 'coupons' && m === 'POST') return couponSave(request, env);
       if (b === 'coupons' && c && m === 'DELETE') return couponDelete(env, c);
@@ -281,6 +282,23 @@ async function productDelete(env, id) {
   id = clean(id, 40);
   const r = await env.DB.prepare('DELETE FROM products WHERE id = ? AND extra IS NOT NULL').bind(id).run();
   return r.meta && r.meta.changes ? J({ ok: true }) : J({ ok: false, error: 'not_custom' }, 400);
+}
+
+// رفع صورة منتج إلى R2 وإرجاع رابط دائم لها (يُخدَّم عبر /img/:key).
+const IMG_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+async function uploadImage(request, env) {
+  if (!env.IMAGES) return J({ ok: false, error: 'no_bucket' }, 503);
+  let form;
+  try { form = await request.formData(); } catch (e) { return J({ ok: false, error: 'invalid' }, 400); }
+  const file = form.get('file');
+  if (!file || typeof file === 'string') return J({ ok: false, error: 'invalid' }, 400);
+  const ext = IMG_TYPES[file.type];
+  if (!ext) return J({ ok: false, error: 'type' }, 400);
+  if (file.size > 5 * 1024 * 1024) return J({ ok: false, error: 'size' }, 400);
+  if (file.size < 10) return J({ ok: false, error: 'empty' }, 400);
+  const key = Date.now().toString(36) + '-' + [...crypto.getRandomValues(new Uint8Array(8))].map(x => x.toString(16).padStart(2, '0')).join('') + '.' + ext;
+  await env.IMAGES.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
+  return J({ ok: true, url: new URL(request.url).origin + '/img/' + key });
 }
 
 async function couponsList(env) {

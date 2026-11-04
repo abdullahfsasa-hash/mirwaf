@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "description": "Only /api/* and /uploads/* go through Pages Functions. Everything else (including /img/*, /admin/*, and the site itself) is served as a static file, so a Function can never shadow a real asset again.",
+  "include": ["/api/*", "/uploads/*"],
+  "exclude": []
+}

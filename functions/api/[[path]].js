@@ -307,7 +307,7 @@ async function uploadImage(request, env) {
   if (file.size < 10) return J({ ok: false, error: 'empty' }, 400);
   const key = Date.now().toString(36) + '-' + [...crypto.getRandomValues(new Uint8Array(8))].map(x => x.toString(16).padStart(2, '0')).join('') + '.' + ext;
   await env.IMAGES.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
-  return J({ ok: true, url: new URL(request.url).origin + '/img/' + key });
+  return J({ ok: true, url: new URL(request.url).origin + '/uploads/' + key });
 }
 
 async function couponsList(env) {

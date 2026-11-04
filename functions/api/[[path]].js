@@ -195,8 +195,17 @@ async function summary(env) {
   const days = [];
   for (let i = 13; i >= 0; i--) { const s = dayStart - i * 86400000; days.push({ t: s + RIYADH, total: sum(live.filter(r => r.created_at >= s && r.created_at < s + 86400000)), n: live.filter(r => r.created_at >= s && r.created_at < s + 86400000).length }); }
   const low = (await env.DB.prepare('SELECT id, stock FROM products WHERE stock IS NOT NULL AND stock <= 3 AND hidden = 0 ORDER BY stock').all()).results;
+  const { results: recentRaw } = await env.DB.prepare('SELECT ref, created_at, status, name, total, method, pay_verified FROM orders ORDER BY created_at DESC LIMIT 6').all();
+  const { results: monthItems } = await env.DB.prepare("SELECT items FROM orders WHERE status <> 'cancelled' AND created_at >= ?").bind(monthStart).all();
+  const top = {};
+  for (const r of monthItems) for (const it of parseItems(r.items)) {
+    const k = it.name || it.id; if (!k) continue;
+    const t = top[k] || (top[k] = { name: k, qty: 0, revenue: 0 });
+    t.qty += Number(it.qty) || 0; t.revenue += (Number(it.qty) || 0) * (Number(it.price) || 0);
+  }
+  const topProducts = Object.values(top).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
   return J({ ok: true, today: { total: sum(live.filter(r => r.created_at >= dayStart)), n: live.filter(r => r.created_at >= dayStart).length }, month: { total: sum(live.filter(r => r.created_at >= monthStart)), n: live.filter(r => r.created_at >= monthStart).length },
-    paid: sum(live.filter(r => r.pay_verified && r.created_at >= monthStart)), counts: Object.fromEntries(cnt.map(r => [r.status, r.n])), days, low });
+    paid: sum(live.filter(r => r.pay_verified && r.created_at >= monthStart)), counts: Object.fromEntries(cnt.map(r => [r.status, r.n])), days, low, recent: recentRaw, topProducts });
 }
 
 async function ordersList(request, env) {

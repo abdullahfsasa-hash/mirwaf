@@ -1,0 +1,16 @@
+{
+  "name": "مرواف | Mirwaf Coffee & More",
+  "short_name": "مرواف",
+  "description": "قهوة مختصة وأكواب ومعدات تحضير القهوة",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "ar",
+  "dir": "rtl",
+  "background_color": "#f6f3ee",
+  "theme_color": "#1E3B31",
+  "icons": [
+    { "src": "/img/logo-badge.webp", "sizes": "512x512", "type": "image/webp", "purpose": "any maskable" }
+  ]
+}

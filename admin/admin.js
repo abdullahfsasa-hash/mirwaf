@@ -103,7 +103,19 @@
         stat('receipt', 'طلبات جديدة', nf(s.counts.new || 0), 'بانتظار التأكيد')),
       h('div', { class: 'card' }, h('b', {}, 'آخر ١٤ يوم'),
         h('div', { class: 'bars', style: 'margin-top:14px', role: 'img', 'aria-label': 'مبيعات آخر ١٤ يوم' }, s.days.map(d => h('i', { style: 'height:' + Math.max(2, d.total / max * 100) + '%', title: nf(d.total) + ' ر.س' })))),
-      s.low.length ? h('div', { class: 'card' }, h('b', {}, '⚠ مخزون منخفض'), h('p', { class: 'mut' }, s.low.map(l => l.id + ': ' + l.stock).join(' · '))) : null);
+      s.low.length ? h('div', { class: 'card' }, h('b', {}, '⚠ مخزون منخفض'), h('p', { class: 'mut' }, s.low.map(l => l.id + ': ' + l.stock).join(' · '))) : null,
+      h('div', { class: 'grid', style: 'grid-template-columns:1.3fr 1fr;align-items:start' },
+        h('div', { class: 'card' }, h('b', {}, 'آخر الطلبات'),
+          (s.recent || []).length
+            ? h('div', { style: 'margin-top:8px' }, s.recent.map(o => h('div', { class: 'prow', style: 'padding:8px 0;border-bottom:1px solid var(--line)' },
+                h('div', { style: 'flex:1' }, h('b', { style: 'font-size:13.5px' }, o.name || o.ref), h('div', { class: 'mut' }, o.ref + ' · ' + dt(o.created_at))),
+                h('span', { class: 'pill ' + o.status }, ST[o.status]), h('b', { style: 'font-family:\'Readex Pro\',sans-serif' }, nf(o.total) + ' ر.س'))))
+            : h('p', { class: 'mut' }, 'لا توجد طلبات بعد.')),
+        h('div', { class: 'card' }, h('b', {}, 'الأكثر مبيعًا هذا الشهر'),
+          (s.topProducts || []).length
+            ? h('div', { style: 'margin-top:8px' }, s.topProducts.map((p, i) => h('div', { class: 'row', style: 'margin:8px 0' },
+                h('span', { class: 'mut', style: 'flex:0 0 18px' }, i + 1), h('span', { style: 'flex:1' }, p.name), h('b', {}, nf(p.qty) + ' قطعة'))))
+            : h('p', { class: 'mut' }, 'لا توجد مبيعات هذا الشهر بعد.'))));
   }
   const stat = (icon, a, b, c) => h('div', { class: 'stat' }, h('div', { class: 'ic' }, ic(icon)), h('small', {}, a), h('b', {}, b), h('small', {}, c));
 
@@ -143,10 +155,38 @@
         h('ul', {}, o.items.map(i => h('li', {}, `${i.name}${i.v ? ' (' + i.v + ')' : ''} × ${i.qty} — ${nf(i.price * i.qty)}`))),
         h('div', {}, h('b', {}, 'الإجمالي: ' + nf(o.total) + ' ر.س'), o.coupon ? h('span', { class: 'mut' }, ` · كوبون ${o.coupon} (−${nf(o.discount)})`) : null),
         h('div', { class: 'row', style: 'margin-top:10px' }, sel, verify,
-          h('a', { class: 'btn sm', target: '_blank', rel: 'noopener', href: 'https://wa.me/' + String(o.phone).replace(/[^\d]/g, '').replace(/^0/, '966') }, 'واتساب العميل')));
+          h('a', { class: 'btn sm', target: '_blank', rel: 'noopener', href: 'https://wa.me/' + String(o.phone).replace(/[^\d]/g, '').replace(/^0/, '966') }, 'واتساب العميل'),
+          h('button', { class: 'btn sm', onclick: () => printReceipt(o) }, 'طباعة الإيصال')));
     }
   }
   function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+  // إيصال قابل للطباعة لطلب واحد — يُبنى عبر DOM (textContent فقط) لتفادي أي حقن من بيانات العميل.
+  function printReceipt(o) {
+    const w = window.open('', '_blank', 'width=420,height=640');
+    if (!w) { toast('يرجى السماح بالنوافذ المنبثقة لهذا الموقع'); return; }
+    const d = w.document;
+    d.title = 'إيصال ' + o.ref;
+    const style = d.createElement('style');
+    style.textContent = "body{font:14px/1.7 system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;padding:22px;color:#241a14;max-width:380px;margin:0 auto}h2{margin:0 0 2px;font-size:19px}.mut{color:#7a6d63;font-size:12.5px}hr{border:none;border-top:1px solid #e7e0d6;margin:12px 0}table{width:100%;border-collapse:collapse;margin:14px 0}td{padding:5px 0;border-bottom:1px solid #f0ece4;font-size:13.5px}.tot{font-weight:700;font-size:16.5px;margin-top:10px}.pbtn{margin-top:20px;padding:9px 18px;border-radius:10px;border:1px solid #3b2418;background:#3b2418;color:#fff;cursor:pointer;font:inherit}@media print{.pbtn{display:none}}";
+    d.head.append(style);
+    const mk = (tag, txt, cls) => { const e = d.createElement(tag); if (txt != null) e.textContent = txt; if (cls) e.className = cls; return e; };
+    const body = d.body;
+    body.append(mk('h2', 'مرواف · إيصال طلب'), mk('div', o.ref + ' — ' + dt(o.created_at), 'mut'), d.createElement('hr'),
+      mk('div', o.name), mk('div', o.phone), mk('div', (o.city || '') + ' — ' + (o.address || '')));
+    const table = d.createElement('table');
+    (o.items || []).forEach(i => {
+      const tr = d.createElement('tr');
+      tr.append(mk('td', `${i.name}${i.v ? ' (' + i.v + ')' : ''} × ${i.qty}`));
+      const td2 = mk('td', nf(i.price * i.qty)); td2.style.textAlign = 'left'; tr.append(td2);
+      table.append(tr);
+    });
+    body.append(table, mk('div', 'الإجمالي: ' + nf(o.total) + ' ر.س', 'tot'));
+    if (o.coupon) body.append(mk('div', `كوبون ${o.coupon} (−${nf(o.discount)})`, 'mut'));
+    const btn = mk('button', 'طباعة', 'pbtn'); btn.addEventListener('click', () => w.print());
+    body.append(btn);
+    w.focus();
+  }
 
   /* ---------- اختيار/رفع صورة ---------- */
   function imagePicker(initial) {

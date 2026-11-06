@@ -7,7 +7,7 @@ export const CATALOG = {
   "price": 160,
   "old": 230,
   "img": "v60-set",
-  "brand": "مرواف",
+  "brand": "لوتشي",
   "variants": null
  },
  "cup-blue": {
@@ -17,7 +17,7 @@ export const CATALOG = {
   "price": 25,
   "old": 60,
   "img": "cup-blue-1",
-  "brand": "مرواف",
+  "brand": "لوتشي",
   "variants": null
  },
  "oro-blanco": {
@@ -87,7 +87,7 @@ export const CATALOG = {
   "price": 21,
   "old": 30,
   "img": "volc-latte",
-  "brand": "مرواف",
+  "brand": "لوتشي",
   "variants": [
    "أزرق ليلي",
    "أزرق وأحمر ناري",
@@ -106,7 +106,7 @@ export const CATALOG = {
   "price": 39,
   "old": 0,
   "img": "mug-arabic",
-  "brand": "مرواف",
+  "brand": "لوتشي",
   "variants": null
  },
  "cup-speckled": {
@@ -116,7 +116,7 @@ export const CATALOG = {
   "price": 45,
   "old": 0,
   "img": "cup-teal",
-  "brand": "مرواف",
+  "brand": "لوتشي",
   "variants": [
    "أخضر مزرق",
    "فيروزي"

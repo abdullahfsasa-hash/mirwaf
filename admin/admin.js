@@ -62,7 +62,7 @@
       pw.value = '';
     };
     app.replaceChildren(h('div', { class: 'login-wrap' }, h('form', { class: 'login card', onsubmit: go },
-      h('h2', {}, 'مرواف'), h('span', { class: 'mut' }, 'لوحة التحكم'),
+      h('h2', {}, 'لوتشي'), h('span', { class: 'mut' }, 'لوحة التحكم'),
       h('label', {}, 'كلمة السر'), pw, err, h('button', { class: 'btn pri', style: 'width:100%;margin-top:8px;justify-content:center' }, 'دخول'))));
     pw.focus();
   }
@@ -76,13 +76,13 @@
     app.replaceChildren(
       h('div', { class: 'shell' },
         h('nav', { class: 'side' },
-          h('div', { class: 'brand' }, h('span', { class: 'dot' }), 'مرواف · الإدارة'),
+          h('div', { class: 'brand' }, h('span', { class: 'dot' }), 'لوتشي · الإدارة'),
           TABS.map(([k, t, i]) => h('button', { class: 'nav-btn', 'aria-current': String(k === cur), onclick: go(k) }, ic(i), h('span', {}, t))),
           h('div', { class: 'bottom' },
             h('a', { class: 'nav-btn', href: '/', target: '_blank', rel: 'noopener' }, ic('store'), h('span', {}, 'عرض المتجر')),
             h('button', { class: 'nav-btn', onclick: async () => { await api('logout', { method: 'POST' }); login(); } }, ic('logout'), h('span', {}, 'تسجيل الخروج')))),
         h('div', { class: 'main' },
-          h('div', { class: 'top' }, h('b', {}, 'مرواف · الإدارة'), h('span', { class: 'sp' }), h('a', { href: '/', target: '_blank', rel: 'noopener', class: 'mut' }, 'المتجر')),
+          h('div', { class: 'top' }, h('b', {}, 'لوتشي · الإدارة'), h('span', { class: 'sp' }), h('a', { href: '/', target: '_blank', rel: 'noopener', class: 'mut' }, 'المتجر')),
           body,
           h('div', { class: 'bottomnav' }, TABS.map(([k, t, i]) => h('button', { 'aria-current': String(k === cur), onclick: go(k) }, ic(i), t))))));
     ({ dash, orders, products, coupons, settings })[cur](body).catch(e => { if (e.message !== 'auth') body.append(h('p', { class: 'err' }, 'تعذّر التحميل، حدّث الصفحة.')); });
@@ -172,7 +172,7 @@
     d.head.append(style);
     const mk = (tag, txt, cls) => { const e = d.createElement(tag); if (txt != null) e.textContent = txt; if (cls) e.className = cls; return e; };
     const body = d.body;
-    body.append(mk('h2', 'مرواف · إيصال طلب'), mk('div', o.ref + ' — ' + dt(o.created_at), 'mut'), d.createElement('hr'),
+    body.append(mk('h2', 'لوتشي · إيصال طلب'), mk('div', o.ref + ' — ' + dt(o.created_at), 'mut'), d.createElement('hr'),
       mk('div', o.name), mk('div', o.phone), mk('div', (o.city || '') + ' — ' + (o.address || '')));
     const table = d.createElement('table');
     (o.items || []).forEach(i => {
@@ -253,7 +253,7 @@
       const dlg = h('dialog', {}, h('div', { class: 'dlg-head' }, h('h3', {}, 'منتج جديد'), h('button', { class: 'btn sm ghost', onclick: () => dlg.close() }, '✕')),
         h('div', { class: 'dlg-pad' },
           fld('name', 'الاسم'), h('label', {}, 'القسم'), (f.cat = h('select', {}, Object.entries(CATS).map(([k, v]) => h('option', { value: k }, v)))),
-          fld('brand', 'العلامة', { value: 'مرواف' }), fld('sub', 'وصف قصير تحت الاسم'),
+          fld('brand', 'العلامة', { value: 'لوتشي' }), fld('sub', 'وصف قصير تحت الاسم'),
           h('div', { class: 'row' }, h('div', {}, fld('price', 'السعر (ر.س)', { type: 'number', min: 1 })), h('div', {}, fld('old', 'قبل الخصم', { type: 'number', min: 0 })), h('div', {}, fld('stock', 'المخزون', { type: 'number', min: 0 }))),
           h('label', {}, 'صورة المنتج'), pic.wrap,
           fld('short', 'ملخص', { tag: 'textarea', rows: 2 }), fld('desc', 'الوصف', { tag: 'textarea', rows: 4 })),

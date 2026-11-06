@@ -244,7 +244,7 @@ async function exportCsv(env) {
   const esc = v => { let s = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return '"' + s.replace(/"/g, '""') + '"'; };
   const head = ['ref', 'date', 'status', 'name', 'phone', 'city', 'address', 'items', 'subtotal', 'discount', 'total', 'coupon', 'method', 'pay_status', 'pay_verified'];
   const rows = results.map(r => [r.ref, new Date(r.created_at + RIYADH).toISOString().replace('T', ' ').slice(0, 16), r.status, r.name, r.phone, r.city, r.address, parseItems(r.items).map(i => `${i.name}${i.v ? ' (' + i.v + ')' : ''} x${i.qty}`).join(' | '), r.subtotal, r.discount, r.total, r.coupon, r.method, r.pay_status, r.pay_verified].map(esc).join(','));
-  return new Response('﻿' + head.join(',') + '\n' + rows.join('\n'), { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="mirwaf-orders.csv"', 'cache-control': 'no-store' } });
+  return new Response('﻿' + head.join(',') + '\n' + rows.join('\n'), { headers: { 'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="luce-orders.csv"', 'cache-control': 'no-store' } });
 }
 
 async function productsList(env) {
@@ -281,7 +281,7 @@ async function productCreate(request, env) {
   const name = clean(b.name, 100), price = int(b.price, 1, 100000), old = b.old === '' || b.old == null ? 0 : int(b.old, 0, 100000);
   const stock = b.stock === '' || b.stock == null ? null : int(b.stock, 0, 100000);
   if (name.length < 2 || price == null || old == null || !CATS.includes(b.cat) || !imgOk(String(b.img || ''))) return J({ ok: false, error: 'invalid' }, 400);
-  const e = { name, cat: b.cat, brand: clean(b.brand || 'مرواف', 60), sub: clean(b.sub || '', 120), short: clean(b.short || '', 500, true), desc: clean(b.desc || '', 2000, true), img: String(b.img) };
+  const e = { name, cat: b.cat, brand: clean(b.brand || 'لوتشي', 60), sub: clean(b.sub || '', 120), short: clean(b.short || '', 500, true), desc: clean(b.desc || '', 2000, true), img: String(b.img) };
   const id = 'x-' + [...crypto.getRandomValues(new Uint8Array(4))].map(x => x.toString(16).padStart(2, '0')).join('');
   await env.DB.prepare('INSERT INTO products (id, price, old_price, stock, hidden, extra) VALUES (?,?,?,?,0,?)').bind(id, price, old, stock, JSON.stringify(e)).run();
   return J({ ok: true, id });

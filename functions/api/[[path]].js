@@ -33,7 +33,12 @@ export async function onRequest(context) {
       if (!adminEnabled(env)) return J({ ok: false, error: 'admin_disabled' }, 503);
       if (!(await isAdmin(request, env))) return J({ ok: false, error: 'unauthorized' }, 401);
       if (m !== 'GET') {
-        if (!sameOrigin(request) || request.headers.get('x-mw') !== '1') return J({ ok: false, error: 'csrf' }, 403);
+        // هنا (خلافًا لـ sameOrigin العامة) نرفض أي طلب بلا ترويسة Origin صريحة ومطابقة —
+        // طلبات لوحة التحكم الحقيقية (fetch من admin.js) ترسل Origin دائمًا، فهذا لا يكسر شيئًا حقيقيًا.
+        const origin = request.headers.get('origin');
+        let originOk = false;
+        if (origin) { try { originOk = new URL(origin).host === new URL(request.url).host; } catch (e) { originOk = false; } }
+        if (!originOk || request.headers.get('x-mw') !== '1') return J({ ok: false, error: 'csrf' }, 403);
       }
       if (b === 'me' && m === 'GET') return J({ ok: true });
       if (b === 'logout' && m === 'POST') { await revokeSessions(env); return J({ ok: true }, 200, { 'set-cookie': clearCookie() }); }

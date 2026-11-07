@@ -1,5 +1,5 @@
 // قاعدة البيانات: إنشاء الجداول تلقائيا عند أول طلب، ودمج الكتالوج الأساسي مع تعديلات الأدمن.
-import { CATALOG, FREE_FROM, SEED_COUPON } from './catalog.js';
+import { CATALOG, FREE_FROM, SEED_COUPON, SEED_COUPON_2 } from './catalog.js';
 
 const DDL = [
   `CREATE TABLE IF NOT EXISTS orders (
@@ -21,6 +21,7 @@ export const init = env => {
     ready = (async () => {
       await env.DB.batch(DDL.map(s => env.DB.prepare(s)));
       await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind(SEED_COUPON.code, SEED_COUPON.pct, 'كود الإطلاق').run();
+      await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind(SEED_COUPON_2.code, SEED_COUPON_2.pct, 'كود الإطلاق (لوتشي)').run();
     })().catch(e => { ready = null; throw e; });
   }
   return ready;

@@ -5,7 +5,7 @@ import { isAdmin, adminEnabled, makeCookie, clearCookie, loginAttempt, revokeSes
 
 const STATUSES = ['new', 'confirmed', 'shipped', 'done', 'cancelled'];
 const CATS = ['beans', 'cups', 'gear', 'filters', 'matcha'];
-const RATE_IP = 6, RATE_ALL = 200;
+const RATE_IP = 15, RATE_ALL = 1000;
 const RIYADH = 3 * 3600000;
 
 const pubOrder = r => ({ ok: true, ref: r.ref, at: r.created_at, sub: r.subtotal, d: r.discount, pct: r.coupon_pct || 0, free: !!r.free_shipping, total: r.total, coupon: r.coupon || '' });

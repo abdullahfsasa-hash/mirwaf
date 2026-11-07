@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /admin
 Disallow: /api/
-Sitemap: https://mirwaf.pages.dev/sitemap.xml
+Sitemap: https://lucebrew.com/sitemap.xml

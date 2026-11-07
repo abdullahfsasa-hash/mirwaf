@@ -165,3 +165,4 @@ export const CATALOG = {
 };
 export const FREE_FROM = 200;
 export const SEED_COUPON = { code: 'MIRWAF10', pct: 10 };
+export const SEED_COUPON_2 = { code: 'LUCE10', pct: 10 };

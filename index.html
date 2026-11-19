@@ -1838,7 +1838,7 @@ function mountPay() {
   const fail = () => { box.innerHTML = `<p class="msg msg--err" role="alert">تعذّر بدء الدفع. حاول مرة أخرى أو اختر واتساب.</p><p style="margin-top:12px"><button class="btn btn--sm" type="button" id="payRetry">إعادة المحاولة</button></p>`; const b = $('#payRetry'); if (b) b.onclick = () => { box.innerHTML = '<p class="lead">جارٍ تحويلك إلى صفحة الدفع الآمنة…</p>'; mountPay(); }; };
   apiCall('pay/start', { ref: o.ref }).then(r => {
     if (r && r.ok && r.paid) { go('done'); return; }
-    if (r && r.ok && typeof r.url === 'string' && /^https:\/\/[A-Za-z0-9.-]+\.streampay\.sa\//.test(r.url)) { location.href = r.url; return; }
+    if (r && r.ok && typeof r.url === 'string' && /^https:\/\/([A-Za-z0-9-]+\.)*streampay\.sa\//.test(r.url)) { location.href = r.url; return; }
     fail();
   }).catch(fail);
 }

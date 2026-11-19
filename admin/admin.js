@@ -1,13 +1,23 @@
 'use strict';
+// نواة لوحة التحكم: أدوات مشتركة، الدخول، الهيكل، لوحة المعلومات. باقي الأقسام تُسجَّل في A.views من ملفات أخرى.
 (() => {
   const app = document.getElementById('app');
-  const ST = { new: 'جديد', confirmed: 'مؤكد', shipped: 'تم الشحن', done: 'مكتمل', cancelled: 'ملغي' };
-  const CATS = { beans: 'بن', cups: 'أكواب', gear: 'أدوات', filters: 'فلاتر', matcha: 'ماتشا' };
-  const nf = n => new Intl.NumberFormat('ar-SA-u-nu-latn').format(n || 0);
-  const dt = t => new Date(t).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { timeZone: 'Asia/Riyadh', dateStyle: 'medium', timeStyle: 'short' });
-  const adminImg = n => !n ? '' : /^https:\/\//.test(n) ? n : `/img/${n}-s.webp`;
+  const A = window.A = { views: {}, state: {} };
+  A.ST = { new: 'جديد', confirmed: 'مؤكد', shipped: 'تم الشحن', done: 'مكتمل', cancelled: 'ملغي' };
+  A.STK = Object.keys(A.ST);
+  A.CATS = { beans: 'بن', cups: 'أكواب', gear: 'أدوات', filters: 'فلاتر', matcha: 'ماتشا' };
+  A.nf = n => new Intl.NumberFormat('en-US').format(Math.round(n || 0));
+  A.money = n => A.nf(n) + ' ر.س';
+  const TZ = 'Asia/Riyadh';
+  A.dt = t => t ? new Date(t).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  A.d = t => t ? new Date(t).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { timeZone: TZ, dateStyle: 'medium' }) : '—';
+  A.img = n => !n ? '' : /^https:\/\//.test(n) ? n : `/img/${n}-s.webp`;
+  A.CARRIER_NAMES = { aramex: 'Aramex', smsa: 'SMSA', jt: 'J&T Express', naqel: 'Naqel', spl: 'البريد السعودي (SPL)', zajil: 'زاجل', other: 'أخرى / مندوب' };
+  A.TRACK = { aramex: 'https://www.aramex.com/track/results?ShipmentNumber=', smsa: 'https://www.smsaexpress.com/track/?tracknumbers=', jt: 'https://www.jtexpress.sa/trackingExpress?billcode=', naqel: 'https://www.naqelexpress.com/en/tracking?waybill=', spl: 'https://splonline.com.sa/en/track-and-trace/?trackingNumber=' };
+  A.trackUrl = (c, n) => (A.TRACK[c] && n) ? A.TRACK[c] + encodeURIComponent(n) : '';
 
-  function h(tag, props, ...kids) {
+  // أنشئ عنصرًا: كل النصوص تمرّ عبر createTextNode (لا innerHTML إطلاقًا للبيانات).
+  const h = A.h = (tag, props, ...kids) => {
     const e = document.createElement(tag);
     for (const [k, v] of Object.entries(props || {})) {
       if (k === 'class') e.className = v;
@@ -15,40 +25,72 @@
       else if (v === true) e.setAttribute(k, '');
       else if (v !== false && v != null) e.setAttribute(k, v);
     }
-    for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+    for (const c of kids.flat(2)) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
     return e;
-  }
-  function toast(msg) {
-    const t = h('div', { class: 'toast' }, h('span', {}, msg));
-    document.body.append(t); setTimeout(() => t.remove(), 2200);
-  }
-  async function api(path, opt = {}) {
-    const o = { method: opt.method || 'GET', headers: { 'x-mw': '1' }, credentials: 'same-origin' };
-    if (opt.body) { o.headers['content-type'] = 'application/json'; o.body = JSON.stringify(opt.body); }
-    const r = await fetch('/api/admin/' + path, o);
-    let j = {}; try { j = await r.json(); } catch (e) { }
-    if (r.status === 401 && path !== 'login') { login(); throw new Error('auth'); }
-    j._status = r.status; return j;
-  }
+  };
+  A.$ = (s, r) => (r || document).querySelector(s);
 
-  /* ---------- أيقونات ---------- */
-  const PATHS = {
+  /* ---------- أيقونات (SVG ثابتة من الكود فقط) ---------- */
+  const P = {
     home: '<path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/>',
     receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
     box: '<path d="M3 8 12 4l9 4-9 4-9-4Z"/><path d="M3 8v8l9 4 9-4V8"/><path d="M12 12v8"/>',
+    users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.8c2 .6 3.4 2.3 3.4 5.2"/>',
     tag: '<path d="M12 3h6a2 2 0 0 1 2 2v6L10 21l-8-8L12 3Z"/><circle cx="14.5" cy="8.5" r="1.3" fill="currentColor" stroke="none"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.2-1.6l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2.8-1.6L13.3 2h-2.6l-.4 2.8a7 7 0 0 0-2.8 1.6l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 3.2l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2.8 1.6l.4 2.8h2.6l.4-2.8a7 7 0 0 0 2.8-1.6l2.3.9 2-3.4-2-1.5c.13-.5.2-1.05.2-1.6Z"/>',
     logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>',
     store: '<path d="M3 9 4.5 4h15L21 9"/><path d="M4 9v10a1 1 0 0 0 1 1h4v-6h6v6h4a1 1 0 0 0 1-1V9"/><path d="M3 9h18"/>',
-    camera: '<path d="M4 8h3l2-2.5h6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13" r="3.3"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>', search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4-4"/>',
     trash: '<path d="M5 6h14"/><path d="M9 6V4h6v2"/><path d="M6 6l1 14h10l1-14"/>',
     image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="M4 18l5-5 4 4 3-3 4 4"/>',
     inbox: '<path d="M3 12h4l2 3h6l2-3h4"/><path d="M5 12 6.5 5h11L19 12v7a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-7Z"/>',
-    cash: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 10v0M18 14v0"/>',
-    cart: '<circle cx="9" cy="20" r="1.4" fill="currentColor" stroke="none"/><circle cx="17" cy="20" r="1.4" fill="currentColor" stroke="none"/><path d="M3 4h2l2.2 11h10.6L20 7H6"/>',
-    bolt: '<path d="M13 3 5 13h6l-1 8 8-10h-6l1-8Z"/>'
+    print: '<path d="M7 9V3h10v6"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
+    wa: '<path d="M4 20l1.2-4A8 8 0 1 1 8.2 19L4 20Z"/><path d="M9 9c.5 2.5 2.5 4.5 5 5l1.3-1.3-2-1-.9.7c-.8-.4-1.5-1.1-1.9-1.9l.7-.9-1-2L9 9Z"/>',
+    down: '<path d="M12 4v11"/><path d="m7 11 5 5 5-5"/><path d="M5 20h14"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"/>',
+    copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+    truck: '<path d="M2 6h11v10H2z"/><path d="M13 9h4l4 4v3h-8"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/>',
+    check: '<path d="m5 12.5 4.5 4.5L19 7"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>', menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    pin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21Z"/><circle cx="12" cy="9.5" r="2.5"/>'
   };
-  const ic = (name, cls) => { const s = h('span', { class: 'icon' + (cls ? ' ' + cls : '') }); s.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${PATHS[name] || ''}</svg>`; return s; };
+  A.ic = (name, cls) => { const s = h('span', { class: 'icon' + (cls ? ' ' + cls : ''), 'aria-hidden': 'true' }); s.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[name] || ''}</svg>`; return s; };
+
+  /* ---------- واجهات مساعدة ---------- */
+  const toasts = h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' });
+  document.body.append(toasts);
+  A.toast = (msg, bad) => { const t = h('div', { class: 'toast' + (bad ? ' bad' : '') }, msg); toasts.append(t); setTimeout(() => t.remove(), bad ? 4200 : 2400); };
+
+  A.modal = (title, body, actions, opt = {}) => new Promise(res => {
+    const close = v => { bg.remove(); document.removeEventListener('keydown', key); res(v); };
+    const key = e => { if (e.key === 'Escape') close(null); };
+    const bg = h('div', { class: 'modal-bg', onclick: e => { if (e.target === bg) close(null); } },
+      h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': title, style: opt.wide ? 'max-width:720px' : null }, h('h3', {}, title), body,
+        h('div', { class: 'row' }, actions.map(a => h('button', { class: 'btn ' + (a.cls || ''), onclick: async () => { if (a.fn) { const r = await a.fn(); if (r === false) return; close(r === undefined ? a.val : r); } else close(a.val); } }, a.t)))));
+    document.addEventListener('keydown', key); document.body.append(bg);
+    const f = bg.querySelector('input,select,textarea,.btn.pri'); if (f) f.focus();
+  });
+  A.confirm = (title, msg, ok = 'تأكيد', danger) => A.modal(title, h('p', { class: 'mut', style: 'margin:0' }, msg), [{ t: 'إلغاء', val: false }, { t: ok, cls: danger ? 'bad' : 'pri', val: true }]);
+
+  A.api = async (path, opt = {}) => {
+    const o = { method: opt.method || 'GET', headers: { 'x-mw': '1' }, credentials: 'same-origin' };
+    if (opt.body) { o.headers['content-type'] = 'application/json'; o.body = JSON.stringify(opt.body); }
+    let r; try { r = await fetch('/api/admin/' + path, o); } catch (e) { return { ok: false, error: 'network', _status: 0 }; }
+    let j = {}; try { j = await r.json(); } catch (e) { }
+    if (r.status === 401 && path !== 'login') { login(); throw new Error('auth'); }
+    j._status = r.status; return j;
+  };
+  A.ERR = { invalid: 'قيمة غير صالحة', not_found: 'غير موجود', cancelled: 'الطلب ملغي ولا يمكن تعديله', paid_locked: 'الطلب مدفوع ولا يمكن تعديل بنوده', stock: 'المخزون لا يكفي', conflict: 'تغيّر الطلب للتو، أعد المحاولة', network: 'تعذّر الاتصال', csrf: 'انتهت الجلسة، أعد تحميل الصفحة', not_custom: 'لا يمكن حذف منتج أساسي، أخفِه بدلًا من ذلك', server: 'خطأ في الخادم' };
+  A.FIELDS = { name: 'الاسم', phone: 'الجوال', city: 'المدينة', address: 'العنوان', addr_short: 'العنوان المختصر', addr_building: 'رقم المبنى', addr_post: 'الرمز البريدي', addr_extra: 'الرقم الإضافي', tracking_no: 'رقم التتبع', carrier: 'شركة الشحن', price: 'السعر', old: 'السعر قبل الخصم', stock: 'المخزون', cost: 'التكلفة', sku: 'رمز SKU', cat: 'التصنيف', img: 'الصورة', pct: 'النسبة', code: 'الكود', free_from: 'حد الشحن المجاني', ship_fee: 'رسوم الشحن', whatsapp_display: 'رقم واتساب', store_email: 'البريد' };
+  A.errMsg = r => (A.ERR[r.error] || 'تعذّر الحفظ') + (r.field ? ` (${A.FIELDS[r.field] || r.field})` : '');
+  A.save = async (p, opt, okMsg) => { const r = await A.api(p, opt); if (r.ok) { if (okMsg) A.toast(okMsg); } else A.toast(A.errMsg(r), true); return r; };
+
+  A.badge = s => h('span', { class: 'badge b-' + s }, A.ST[s] || s);
+  A.empty = (icon, t, sub) => h('div', { class: 'empty' }, A.ic(icon), h('div', {}, t), sub ? h('div', { class: 'sm' }, sub) : null);
+  A.skel = (n = 4) => h('div', { class: 'stack' }, Array.from({ length: n }, () => h('div', { class: 'skel' })));
+  A.field = (label, input, hint) => h('div', { class: 'f' }, h('label', {}, label), input, hint ? h('div', { class: 'hint' }, hint) : null);
+  A.download = async (path) => { const r = await fetch('/api/admin/' + path, { credentials: 'same-origin', headers: { 'x-mw': '1' } }); if (!r.ok) return A.toast('تعذّر التنزيل', true); const b = await r.blob(), cd = r.headers.get('content-disposition') || '', m = /filename="([^"]+)"/.exec(cd); const a = h('a', { href: URL.createObjectURL(b), download: m ? m[1] : 'file' }); document.body.append(a); a.click(); a.remove(); };
+  A.debounce = (f, ms = 300) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), ms); }; };
+  A.waPhone = p => { let d = String(p || '').replace(/[^\d]/g, ''); if (d.startsWith('00')) d = d.slice(2); if (d.startsWith('966')) return d; if (d.startsWith('0')) d = d.slice(1); return '966' + d; };
+  A.waLink = (phone, text) => 'https://wa.me/' + A.waPhone(phone) + '?text=' + encodeURIComponent(text);
 
   /* ---------- دخول ---------- */
   function login(msg) {
@@ -56,247 +98,100 @@
     const pw = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'كلمة السر' });
     const go = async e => {
       e.preventDefault(); err.textContent = '';
-      const r = await api('login', { method: 'POST', body: { password: pw.value } }).catch(() => ({}));
-      if (r.ok) return shell();
+      const r = await A.api('login', { method: 'POST', body: { password: pw.value } }).catch(() => ({}));
+      if (r.ok) return boot();
       err.textContent = r.error === 'locked' ? 'محاولات كثيرة، انتظر ١٥ دقيقة.' : r.error === 'admin_disabled' ? 'لم تُفعَّل كلمة سر الأدمن بعد في Cloudflare.' : 'كلمة السر غير صحيحة.';
       pw.value = '';
     };
     app.replaceChildren(h('div', { class: 'login-wrap' }, h('form', { class: 'login card', onsubmit: go },
       h('h2', {}, 'لوتشي'), h('span', { class: 'mut' }, 'لوحة التحكم'),
-      h('label', {}, 'كلمة السر'), pw, err, h('button', { class: 'btn pri', style: 'width:100%;margin-top:8px;justify-content:center' }, 'دخول'))));
+      h('div', { class: 'f', style: 'margin-top:14px' }, h('label', {}, 'كلمة السر'), pw), err,
+      h('button', { class: 'btn pri', style: 'width:100%;justify-content:center' }, 'دخول'))));
     pw.focus();
   }
 
-  /* ---------- الهيكل ---------- */
-  const TABS = [['dash', 'الرئيسية', 'home'], ['orders', 'الطلبات', 'receipt'], ['products', 'المنتجات', 'box'], ['coupons', 'الكوبونات', 'tag'], ['settings', 'الإعدادات', 'gear']];
-  let cur = 'dash';
-  function shell() {
-    const body = h('div', { class: 'wrap' });
-    const go = k => () => { cur = k; shell(); };
-    app.replaceChildren(
-      h('div', { class: 'shell' },
-        h('nav', { class: 'side' },
-          h('div', { class: 'brand' }, h('span', { class: 'dot' }), 'لوتشي · الإدارة'),
-          TABS.map(([k, t, i]) => h('button', { class: 'nav-btn', 'aria-current': String(k === cur), onclick: go(k) }, ic(i), h('span', {}, t))),
-          h('div', { class: 'bottom' },
-            h('a', { class: 'nav-btn', href: '/', target: '_blank', rel: 'noopener' }, ic('store'), h('span', {}, 'عرض المتجر')),
-            h('button', { class: 'nav-btn', onclick: async () => { await api('logout', { method: 'POST' }); login(); } }, ic('logout'), h('span', {}, 'تسجيل الخروج')))),
-        h('div', { class: 'main' },
-          h('div', { class: 'top' }, h('b', {}, 'لوتشي · الإدارة'), h('span', { class: 'sp' }), h('a', { href: '/', target: '_blank', rel: 'noopener', class: 'mut' }, 'المتجر')),
-          body,
-          h('div', { class: 'bottomnav' }, TABS.map(([k, t, i]) => h('button', { 'aria-current': String(k === cur), onclick: go(k) }, ic(i), t))))));
-    ({ dash, orders, products, coupons, settings })[cur](body).catch(e => { if (e.message !== 'auth') body.append(h('p', { class: 'err' }, 'تعذّر التحميل، حدّث الصفحة.')); });
-  }
-  const pageHead = (title, sub) => h('div', { class: 'page-head' }, h('div', {}, h('h2', {}, title), sub ? h('div', { class: 'mut' }, sub) : null));
-  const empty = (icon, msg) => h('div', { class: 'empty' }, ic(icon), h('div', {}, msg));
+  /* ---------- الهيكل والتوجيه ---------- */
+  const TABS = [['dash', 'الرئيسية', 'home'], ['orders', 'الطلبات', 'receipt'], ['products', 'المنتجات', 'box'], ['customers', 'العملاء', 'users'], ['coupons', 'الكوبونات', 'tag'], ['settings', 'الإعدادات', 'gear']];
+  const TITLES = Object.fromEntries(TABS.map(t => [t[0], t[1]]));
+  let main, titleEl, storeName = 'لوتشي';
+  A.go = (hash) => { location.hash = hash; };
+  const route = () => {
+    if (!main) return;
+    const [k, ...rest] = (location.hash.slice(1) || 'dash').split('/');
+    const view = A.views[k] || A.views.dash, key = A.views[k] ? k : 'dash';
+    document.querySelectorAll('[data-nav]').forEach(b => b.setAttribute('aria-current', String(b.dataset.nav === key)));
+    titleEl.textContent = TITLES[key] || '';
+    document.title = (TITLES[key] || '') + ' · ' + storeName;
+    main.replaceChildren(A.skel(6));
+    window.scrollTo(0, 0);
+    Promise.resolve(view(main, rest.map(decodeURIComponent))).catch(e => { if (e.message !== 'auth') main.replaceChildren(A.empty('inbox', 'حدث خطأ أثناء التحميل', String(e.message || ''))); });
+  };
+  A.reload = route;
+  A.setBadge = n => document.querySelectorAll('[data-badge]').forEach(b => { b.textContent = n || ''; b.style.display = n ? '' : 'none'; });
 
-  /* ---------- الرئيسية ---------- */
-  async function dash(el) {
-    el.append(pageHead('نظرة عامة', 'أداء المتجر خلال آخر فترة'));
-    const s = await api('summary');
-    const max = Math.max(1, ...s.days.map(d => d.total));
-    el.append(
-      h('div', { class: 'grid' },
-        stat('cash', 'مبيعات اليوم', nf(s.today.total) + ' ر.س', s.today.n + ' طلب'),
-        stat('bolt', 'مبيعات الشهر', nf(s.month.total) + ' ر.س', s.month.n + ' طلب'),
-        stat('cart', 'مدفوع إلكترونيا (الشهر)', nf(s.paid) + ' ر.س', 'تم التحقق من الخادم'),
-        stat('receipt', 'طلبات جديدة', nf(s.counts.new || 0), 'بانتظار التأكيد')),
-      h('div', { class: 'card' }, h('b', {}, 'آخر ١٤ يوم'),
-        h('div', { class: 'bars', style: 'margin-top:14px', role: 'img', 'aria-label': 'مبيعات آخر ١٤ يوم' }, s.days.map(d => h('i', { style: 'height:' + Math.max(2, d.total / max * 100) + '%', title: nf(d.total) + ' ر.س' })))),
-      s.low.length ? h('div', { class: 'card' }, h('b', {}, '⚠ مخزون منخفض'), h('p', { class: 'mut' }, s.low.map(l => l.id + ': ' + l.stock).join(' · '))) : null,
-      h('div', { class: 'grid', style: 'grid-template-columns:1.3fr 1fr;align-items:start' },
-        h('div', { class: 'card' }, h('b', {}, 'آخر الطلبات'),
-          (s.recent || []).length
-            ? h('div', { style: 'margin-top:8px' }, s.recent.map(o => h('div', { class: 'prow', style: 'padding:8px 0;border-bottom:1px solid var(--line)' },
-                h('div', { style: 'flex:1' }, h('b', { style: 'font-size:13.5px' }, o.name || o.ref), h('div', { class: 'mut' }, o.ref + ' · ' + dt(o.created_at))),
-                h('span', { class: 'pill ' + o.status }, ST[o.status]), h('b', { style: 'font-family:\'Readex Pro\',sans-serif' }, nf(o.total) + ' ر.س'))))
-            : h('p', { class: 'mut' }, 'لا توجد طلبات بعد.')),
-        h('div', { class: 'card' }, h('b', {}, 'الأكثر مبيعًا هذا الشهر'),
-          (s.topProducts || []).length
-            ? h('div', { style: 'margin-top:8px' }, s.topProducts.map((p, i) => h('div', { class: 'row', style: 'margin:8px 0' },
-                h('span', { class: 'mut', style: 'flex:0 0 18px' }, i + 1), h('span', { style: 'flex:1' }, p.name), h('b', {}, nf(p.qty) + ' قطعة'))))
-            : h('p', { class: 'mut' }, 'لا توجد مبيعات هذا الشهر بعد.'))));
+  async function boot() {
+    const s = await A.api('settings').catch(() => ({}));
+    if (s.settings && s.settings.store_name) storeName = s.settings.store_name;
+    const nav = (cls) => TABS.map(([k, t, i]) => h('button', { class: cls, 'data-nav': k, onclick: () => A.go(k) }, A.ic(i), h('span', {}, t), k === 'orders' && cls === 'nav-btn' ? h('span', { class: 'badge b-new', 'data-badge': '', style: 'display:none' }) : null));
+    main = h('div', { class: 'wrap', id: 'view' });
+    titleEl = h('h1', {}, '');
+    const q = h('input', { type: 'search', placeholder: 'ابحث برقم الطلب أو الاسم أو الجوال…', 'aria-label': 'بحث', onkeydown: e => { if (e.key === 'Enter' && q.value.trim()) { A.state.q = q.value.trim(); A.go('orders'); if (location.hash === '#orders') route(); } } });
+    app.replaceChildren(h('div', { class: 'shell' },
+      h('nav', { class: 'side', 'aria-label': 'التنقل' }, h('div', { class: 'brand' }, h('span', { class: 'dot' }), storeName + ' · الإدارة'), nav('nav-btn'), h('div', { class: 'grow' }),
+        h('a', { class: 'nav-btn', href: '/', target: '_blank', rel: 'noopener' }, A.ic('store'), h('span', {}, 'عرض المتجر')),
+        h('button', { class: 'nav-btn', onclick: async () => { if (await A.confirm('تسجيل الخروج', 'سيتم إنهاء جلسة الأدمن على كل الأجهزة.', 'خروج')) { await A.api('logout', { method: 'POST' }); login(); } } }, A.ic('logout'), h('span', {}, 'تسجيل الخروج'))),
+      h('div', { class: 'main' }, h('header', { class: 'top' }, titleEl, h('div', { class: 'search' }, q, A.ic('search')),
+        h('a', { class: 'btn sm', href: '/', target: '_blank', rel: 'noopener' }, A.ic('store'), h('span', { class: 'hide-m' }, 'عرض المتجر'))), main),
+      h('nav', { class: 'mnav', 'aria-label': 'التنقل' }, nav(''))));
+    window.removeEventListener('hashchange', route); window.addEventListener('hashchange', route);
+    route();
+    A.api('orders?status=new&limit=1').then(r => A.setBadge(r.counts && r.counts.new)).catch(() => { });
   }
-  const stat = (icon, a, b, c) => h('div', { class: 'stat' }, h('div', { class: 'ic' }, ic(icon)), h('small', {}, a), h('b', {}, b), h('small', {}, c));
 
-  /* ---------- الطلبات ---------- */
-  async function orders(el) {
-    el.append(pageHead('الطلبات'));
-    const q = h('input', { placeholder: 'بحث: رقم الطلب / الاسم / الجوال' });
-    const st = h('select', {}, h('option', { value: '' }, 'كل الحالات'), Object.entries(ST).map(([k, v]) => h('option', { value: k }, v)));
-    const list = h('div');
-    const load = async () => {
-      list.replaceChildren(h('div', { class: 'skel', style: 'height:90px;margin:10px 0' }), h('div', { class: 'skel', style: 'height:90px' }));
-      const r = await api('orders?status=' + encodeURIComponent(st.value) + '&q=' + encodeURIComponent(q.value));
-      list.replaceChildren(...(r.orders.length ? r.orders.map(card) : [empty('inbox', 'لا توجد طلبات مطابقة.')]));
-    };
-    q.addEventListener('input', debounce(load, 350)); st.addEventListener('change', load);
-    el.append(h('div', { class: 'row card' }, q, st, h('a', { class: 'btn', href: '/api/admin/export' }, 'تصدير CSV')), list);
-    await load();
-    function card(o) {
-      const sel = h('select', { 'aria-label': 'الحالة' }, Object.entries(ST).map(([k, v]) => h('option', { value: k, selected: k === o.status }, v)));
-      sel.addEventListener('change', async () => {
-        if (sel.value === 'cancelled' && !confirm('إلغاء الطلب وإرجاع المخزون؟')) { sel.value = o.status; return; }
-        const r = await api('orders/' + encodeURIComponent(o.ref), { method: 'POST', body: { status: sel.value } });
-        toast(r.ok ? 'تم التحديث' : 'تعذّر التحديث'); load();
-      });
-      const pay = o.method === 'card'
-        ? h('span', { class: 'pill ' + (o.pay_verified ? 'ok' : 'no') }, o.pay_verified ? 'مدفوع ✓' : 'بطاقة · ' + (o.pay_status === 'unverified' ? 'بانتظار التحقق' : o.pay_status ? 'غير مؤكد' : 'لم يكتمل'))
-        : h('span', { class: 'pill' }, 'واتساب');
-      const verify = o.method === 'card' && !o.pay_verified ? h('button', { class: 'btn sm', onclick: async () => {
-        const id = prompt('رقم فاتورة Stream (invoice id من لوحة Stream):'); if (!id) return;
-        const r = await api('orders/' + encodeURIComponent(o.ref) + '/verify', { method: 'POST', body: { id } });
-        toast(r.verified ? 'تم التحقق: مدفوع' : 'لم يتحقق الدفع'); load();
-      } }, 'تحقق من الدفع') : null;
-      return h('div', { class: 'ord st-' + o.status },
-        h('h4', {}, o.ref, h('span', { class: 'pill ' + o.status }, ST[o.status]), pay, h('span', { class: 'mut' }, dt(o.created_at))),
-        h('div', {}, o.name, ' · ', h('a', { href: 'tel:' + o.phone }, o.phone), ' · ', o.city),
-        h('div', { class: 'mut' }, o.address, o.notes ? ' — ' + o.notes : ''),
-        h('ul', {}, o.items.map(i => h('li', {}, `${i.name}${i.v ? ' (' + i.v + ')' : ''} × ${i.qty} — ${nf(i.price * i.qty)}`))),
-        h('div', {}, h('b', {}, 'الإجمالي: ' + nf(o.total) + ' ر.س'), o.coupon ? h('span', { class: 'mut' }, ` · كوبون ${o.coupon} (−${nf(o.discount)})`) : null),
-        h('div', { class: 'row', style: 'margin-top:10px' }, sel, verify,
-          h('a', { class: 'btn sm', target: '_blank', rel: 'noopener', href: 'https://wa.me/' + String(o.phone).replace(/[^\d]/g, '').replace(/^0/, '966') }, 'واتساب العميل'),
-          h('button', { class: 'btn sm', onclick: () => printReceipt(o) }, 'طباعة الإيصال')));
-    }
-  }
-  function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
-
-  // إيصال قابل للطباعة لطلب واحد — يُبنى عبر DOM (textContent فقط) لتفادي أي حقن من بيانات العميل.
-  function printReceipt(o) {
-    const w = window.open('', '_blank', 'width=420,height=640');
-    if (!w) { toast('يرجى السماح بالنوافذ المنبثقة لهذا الموقع'); return; }
-    const d = w.document;
-    d.title = 'إيصال ' + o.ref;
-    const style = d.createElement('style');
-    style.textContent = "body{font:14px/1.7 system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;direction:rtl;padding:22px;color:#241a14;max-width:380px;margin:0 auto}h2{margin:0 0 2px;font-size:19px}.mut{color:#7a6d63;font-size:12.5px}hr{border:none;border-top:1px solid #e7e0d6;margin:12px 0}table{width:100%;border-collapse:collapse;margin:14px 0}td{padding:5px 0;border-bottom:1px solid #f0ece4;font-size:13.5px}.tot{font-weight:700;font-size:16.5px;margin-top:10px}.pbtn{margin-top:20px;padding:9px 18px;border-radius:10px;border:1px solid #3b2418;background:#3b2418;color:#fff;cursor:pointer;font:inherit}@media print{.pbtn{display:none}}";
-    d.head.append(style);
-    const mk = (tag, txt, cls) => { const e = d.createElement(tag); if (txt != null) e.textContent = txt; if (cls) e.className = cls; return e; };
-    const body = d.body;
-    body.append(mk('h2', 'لوتشي · إيصال طلب'), mk('div', o.ref + ' — ' + dt(o.created_at), 'mut'), d.createElement('hr'),
-      mk('div', o.name), mk('div', o.phone), mk('div', (o.city || '') + ' — ' + (o.address || '')));
-    const table = d.createElement('table');
-    (o.items || []).forEach(i => {
-      const tr = d.createElement('tr');
-      tr.append(mk('td', `${i.name}${i.v ? ' (' + i.v + ')' : ''} × ${i.qty}`));
-      const td2 = mk('td', nf(i.price * i.qty)); td2.style.textAlign = 'left'; tr.append(td2);
-      table.append(tr);
+  /* ---------- لوحة المعلومات ---------- */
+  const spark = (days, key) => {
+    const W = 600, Ht = 170, pad = 22, max = Math.max(1, ...days.map(d => d[key])), bw = (W - pad * 2) / days.length;
+    const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${W} ${Ht + 20}`); svg.setAttribute('class', 'chart'); svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'مبيعات الأيام الأخيرة'); svg.setAttribute('preserveAspectRatio', 'none');
+    days.forEach((d, i) => {
+      const hh = Math.max(d[key] ? 3 : 0, (d[key] / max) * (Ht - 16)), x = pad + i * bw + bw * 0.15;
+      const r = document.createElementNS(NS, 'rect'); r.setAttribute('class', 'bar'); r.setAttribute('x', x); r.setAttribute('y', Ht - hh); r.setAttribute('width', bw * 0.7); r.setAttribute('height', hh); r.setAttribute('rx', 3);
+      const t = document.createElementNS(NS, 'title'); t.textContent = A.d(d.t) + ' — ' + A.nf(d.total) + ' ر.س (' + d.n + ' طلب)'; r.append(t); svg.append(r);
+      if (i % Math.ceil(days.length / 7) === 0) { const tx = document.createElementNS(NS, 'text'); tx.setAttribute('x', x + bw * 0.35); tx.setAttribute('y', Ht + 14); tx.setAttribute('text-anchor', 'middle'); tx.textContent = new Date(d.t).getUTCDate(); svg.append(tx); }
     });
-    body.append(table, mk('div', 'الإجمالي: ' + nf(o.total) + ' ر.س', 'tot'));
-    if (o.coupon) body.append(mk('div', `كوبون ${o.coupon} (−${nf(o.discount)})`, 'mut'));
-    const btn = mk('button', 'طباعة', 'pbtn'); btn.addEventListener('click', () => w.print());
-    body.append(btn);
-    w.focus();
-  }
+    return svg;
+  };
+  const delta = (cur, prev) => { if (!prev) return null; const p = Math.round((cur - prev) / prev * 100); return h('span', { class: 'd ' + (p >= 0 ? 'up' : 'down') }, (p >= 0 ? '▲ ' : '▼ ') + Math.abs(p) + '٪ عن السابق'); };
+  const kpi = (l, v, d) => h('div', { class: 'card kpi' }, h('span', { class: 'l' }, l), h('span', { class: 'v num' }, v), d || h('span', { class: 'd mut' }, ' '));
 
-  /* ---------- اختيار/رفع صورة ---------- */
-  function imagePicker(initial) {
-    const thumb = h('div', { class: 'thumb' }, ic('image'));
-    const setPreview = src => { thumb.style.backgroundImage = src ? `url('${src}')` : ''; thumb.replaceChildren(src ? '' : ic('image')); };
-    const urlInput = h('input', { placeholder: 'أو الصق رابط صورة https://…', style: 'direction:ltr', value: initial || '' });
-    setPreview(adminImg(initial) || initial);
-    urlInput.addEventListener('change', () => setPreview(urlInput.value));
-    const file = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp,image/gif', style: 'display:none' });
-    const status = h('span', { class: 'mut' }, '');
-    const btn = h('button', { type: 'button', class: 'btn sm' }, ic('camera'), 'رفع صورة');
-    btn.addEventListener('click', () => file.click());
-    file.addEventListener('change', async () => {
-      const f = file.files[0]; if (!f) return;
-      status.textContent = 'جارٍ الرفع…'; btn.setAttribute('disabled', '');
-      const fd = new FormData(); fd.append('file', f);
-      try {
-        const r = await fetch('/api/admin/upload', { method: 'POST', headers: { 'x-mw': '1' }, credentials: 'same-origin', body: fd });
-        const j = await r.json().catch(() => ({}));
-        if (j.ok) { urlInput.value = j.url; setPreview(j.url); status.textContent = 'تم الرفع ✓'; }
-        else status.textContent = j.error === 'size' ? 'أكبر من 5MB' : j.error === 'type' ? 'نوع غير مدعوم' : j.error === 'no_bucket' ? 'التخزين غير مفعّل، راسل الدعم' : 'تعذّر الرفع';
-      } catch (e) { status.textContent = 'تعذّر الرفع'; }
-      btn.removeAttribute('disabled'); file.value = '';
-    });
-    const wrap = h('div', {}, h('div', { class: 'imgpick' }, thumb, h('div', { style: 'flex:1' }, h('div', { class: 'row', style: 'margin:0' }, btn, status))), h('div', { style: 'margin-top:8px' }, urlInput));
-    return { wrap, get value() { return urlInput.value; } };
-  }
+  A.views.dash = async (el) => {
+    const range = A.state.range || 14;
+    const s = await A.api('summary?range=' + range);
+    if (!s.ok) return el.replaceChildren(A.empty('inbox', 'تعذّر تحميل البيانات'));
+    A.setBadge(s.pending);
+    const rg = h('div', { class: 'seg' }, [14, 30].map(n => h('button', { 'aria-pressed': String(n === range), onclick: () => { A.state.range = n; route(); } }, n + ' يوم')));
+    const msg = h('div', { class: 'callout info' }, `${A.nf(s.split.card.n)} طلب بالدفع الإلكتروني (${A.nf(s.split.cardPaid.n)} مدفوع) و${A.nf(s.split.wa.n)} عبر واتساب هذا الشهر`);
+    el.replaceChildren(
+      h('div', { class: 'row', style: 'margin-bottom:14px' }, h('h2', { style: 'margin:0;font-size:20px' }, 'نظرة عامة'), h('div', { class: 'sp' }),
+        h('a', { class: 'btn pri', href: '#orders' }, A.ic('receipt'), 'الطلبات'), h('button', { class: 'btn', onclick: () => A.go('products/new') }, A.ic('plus'), 'منتج جديد')),
+      s.pending ? h('div', { class: 'callout warn', style: 'margin-bottom:14px;cursor:pointer', onclick: () => { A.state.status = 'new'; A.go('orders'); } }, `لديك ${A.nf(s.pending)} طلب جديد بانتظار المراجعة — اضغط للعرض`) : null,
+      h('div', { class: 'grid g4' },
+        kpi('مبيعات اليوم', A.money(s.today.total), delta(s.today.total, s.yesterday.total) || h('span', { class: 'd mut' }, s.today.n + ' طلب')),
+        kpi('آخر 7 أيام', A.money(s.week.total), h('span', { class: 'd mut' }, s.week.n + ' طلب')),
+        kpi('هذا الشهر', A.money(s.month.total), delta(s.month.total, s.prevMonth.total) || h('span', { class: 'd mut' }, s.month.n + ' طلب')),
+        kpi('متوسط قيمة الطلب', A.money(s.aov), h('span', { class: 'd mut' }, 'مدفوع إلكترونيًا: ' + A.money(s.paid)))),
+      h('div', { class: 'grid g-main', style: 'margin-top:14px' },
+        h('div', { class: 'card' }, h('div', { class: 'card-h' }, h('span', { class: 'grow' }, 'المبيعات اليومية'), rg), spark(s.days, 'total'), msg),
+        h('div', { class: 'card' }, h('h3', {}, 'الأكثر مبيعًا هذا الشهر'),
+          s.topProducts.length ? h('ul', { class: 'list bars' }, s.topProducts.map(p => h('li', {}, h('div', { style: 'flex:1;min-width:0' }, h('div', {}, p.name), h('div', { class: 'b' }, h('i', { style: `width:${Math.max(6, p.revenue / s.topProducts[0].revenue * 100)}%` }))), h('div', { class: 'sm mut num' }, p.qty + ' × ')))) : A.empty('box', 'لا مبيعات بعد')))
+      , h('div', { class: 'grid g2', style: 'margin-top:14px' },
+        h('div', { class: 'card' }, h('div', { class: 'card-h' }, h('span', { class: 'grow' }, 'أحدث الطلبات'), h('a', { href: '#orders', class: 'sm' }, 'الكل')),
+          s.recent.length ? h('ul', { class: 'list' }, s.recent.map(o => h('li', { style: 'cursor:pointer', onclick: () => A.go('orders/' + o.ref) }, h('div', { style: 'flex:1;min-width:0' }, h('b', { class: 'num' }, '#' + o.ref), ' ', h('span', { class: 'mut' }, o.name)), A.badge(o.status), h('span', { class: 'num' }, A.nf(o.total))))) : A.empty('inbox', 'لا توجد طلبات بعد')),
+        h('div', { class: 'card' }, h('h3', {}, 'مخزون منخفض'),
+          s.low.length ? h('ul', { class: 'list' }, s.low.map(p => h('li', { style: 'cursor:pointer', onclick: () => A.go('products/' + encodeURIComponent(p.id)) }, h('img', { class: 'thumb', src: A.img(p.img), alt: '', loading: 'lazy' }), h('span', { style: 'flex:1' }, p.name), h('span', { class: 'badge ' + (p.stock === 0 ? 'b-bad' : 'b-warn') }, p.stock === 0 ? 'نفد' : p.stock + ' متبقي')))) : A.empty('check', 'كل المخزون بحالة جيدة'))));
+  };
 
-  /* ---------- المنتجات ---------- */
-  async function products(el) {
-    el.append(pageHead('المنتجات', 'الأسعار، المخزون، والصور'));
-    const r = await api('products');
-    const tb = h('tbody', {}, r.products.map(p => {
-      const price = h('input', { type: 'number', min: 1, value: p.price }), old = h('input', { type: 'number', min: 0, value: p.old || '' }),
-        stock = h('input', { type: 'number', min: 0, value: p.stock == null ? '' : p.stock, placeholder: 'غير محدود' }), hid = h('input', { type: 'checkbox', checked: !!p.hidden, style: 'width:auto' });
-      let newImg = null;
-      const save = async () => {
-        const body = { price: price.value, old: old.value, stock: stock.value, hidden: hid.checked };
-        if (newImg != null) body.img = newImg;
-        const x = await api('products/' + encodeURIComponent(p.id), { method: 'POST', body });
-        toast(x.ok ? 'تم الحفظ' : 'قيمة غير صالحة'); if (x.ok && newImg != null) shell();
-      };
-      const thumb = h('div', { class: 'pthumb', style: adminImg(p.img) ? `background-image:url('${adminImg(p.img)}')` : '' });
-      const editImg = p.custom ? h('button', { class: 'btn sm', title: 'تغيير الصورة', onclick: () => imgDlg() }) : null;
-      if (editImg) editImg.append(ic('camera'));
-      function imgDlg() {
-        const pic = imagePicker(p.img);
-        const dlg = h('dialog', {}, h('div', { class: 'dlg-head' }, h('h3', {}, 'صورة ' + p.name), h('button', { class: 'btn sm ghost', onclick: () => dlg.close() }, '✕')),
-          h('div', { class: 'dlg-pad' }, pic.wrap),
-          h('div', { class: 'dlg-foot' }, h('button', { class: 'btn', onclick: () => dlg.close() }, 'إلغاء'),
-            h('button', { class: 'btn pri', onclick: () => { newImg = pic.value; thumb.style.backgroundImage = newImg ? `url('${newImg}')` : ''; dlg.close(); toast('اضغط "حفظ" بالسطر لتثبيت الصورة'); } }, 'استخدام هذه الصورة')));
-        document.body.append(dlg); dlg.addEventListener('close', () => dlg.remove()); dlg.showModal();
-      }
-      return h('tr', {}, h('td', {}, h('div', { class: 'prow' }, thumb, h('div', {}, h('b', {}, p.name), h('div', { class: 'mut' }, p.id, p.custom ? ' · مضاف' : '')))),
-        h('td', {}, price), h('td', {}, old), h('td', {}, stock), h('td', {}, hid),
-        h('td', {}, h('div', { class: 'row', style: 'margin:0' }, h('button', { class: 'btn sm pri', onclick: save }, 'حفظ'), editImg,
-          p.custom ? h('button', { class: 'btn sm bad', onclick: async () => { if (confirm('حذف المنتج؟')) { await api('products/' + encodeURIComponent(p.id), { method: 'DELETE' }); shell(); } } }, ic('trash')) : null)));
-    }));
-    el.append(h('div', { class: 'card' }, h('button', { class: 'btn pri', onclick: addDlg }, '+ منتج جديد')),
-      h('div', { class: 'card tw' }, h('table', { class: 'pt' }, h('thead', {}, h('tr', {}, ['المنتج', 'السعر', 'قبل الخصم', 'المخزون', 'مخفي', ''].map(t => h('th', {}, t)))), tb)));
-    function addDlg() {
-      const f = {}; const fld = (k, l, a = {}) => (f[k] = h(a.tag || 'input', a), [h('label', {}, l), f[k]]);
-      const pic = imagePicker('');
-      const dlg = h('dialog', {}, h('div', { class: 'dlg-head' }, h('h3', {}, 'منتج جديد'), h('button', { class: 'btn sm ghost', onclick: () => dlg.close() }, '✕')),
-        h('div', { class: 'dlg-pad' },
-          fld('name', 'الاسم'), h('label', {}, 'القسم'), (f.cat = h('select', {}, Object.entries(CATS).map(([k, v]) => h('option', { value: k }, v)))),
-          fld('brand', 'العلامة', { value: 'لوتشي' }), fld('sub', 'وصف قصير تحت الاسم'),
-          h('div', { class: 'row' }, h('div', {}, fld('price', 'السعر (ر.س)', { type: 'number', min: 1 })), h('div', {}, fld('old', 'قبل الخصم', { type: 'number', min: 0 })), h('div', {}, fld('stock', 'المخزون', { type: 'number', min: 0 }))),
-          h('label', {}, 'صورة المنتج'), pic.wrap,
-          fld('short', 'ملخص', { tag: 'textarea', rows: 2 }), fld('desc', 'الوصف', { tag: 'textarea', rows: 4 })),
-        h('div', { class: 'dlg-foot' }, h('button', { class: 'btn', onclick: () => dlg.close() }, 'إلغاء'), h('button', { class: 'btn pri', onclick: async () => {
-          const body = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.value])); body.img = pic.value;
-          const x = await api('products', { method: 'POST', body });
-          if (x.ok) { dlg.close(); shell(); toast('تمت الإضافة'); } else toast('تحقق من الحقول (الاسم، السعر، والصورة)');
-        } }, 'إضافة')));
-      document.body.append(dlg); dlg.addEventListener('close', () => dlg.remove()); dlg.showModal();
-    }
-  }
-
-  /* ---------- الكوبونات ---------- */
-  async function coupons(el) {
-    el.append(pageHead('الكوبونات'));
-    const r = await api('coupons');
-    const code = h('input', { placeholder: 'الكود مثل RAMADAN', style: 'direction:ltr' }), pct = h('input', { type: 'number', min: 1, max: 90, placeholder: 'النسبة %' }),
-      exp = h('input', { type: 'date', 'aria-label': 'ينتهي' }), note = h('input', { placeholder: 'ملاحظة' });
-    el.append(h('div', { class: 'card row' }, code, pct, exp, note, h('button', { class: 'btn pri', onclick: async () => {
-      const x = await api('coupons', { method: 'POST', body: { code: code.value, pct: pct.value, expires: exp.value, note: note.value } });
-      if (x.ok) shell(); else toast('بيانات غير صالحة');
-    } }, 'حفظ')),
-      r.coupons.length ? h('div', { class: 'card tw' }, h('table', {}, h('thead', {}, h('tr', {}, ['الكود', 'الخصم', 'الاستخدام', 'ينتهي', 'الحالة', ''].map(t => h('th', {}, t)))),
-        h('tbody', {}, r.coupons.map(c => h('tr', {}, h('td', {}, c.code, c.note ? h('div', { class: 'mut' }, c.note) : null), h('td', {}, c.pct + '%'), h('td', {}, c.used), h('td', {}, c.expires ? dt(c.expires) : '—'),
-          h('td', {}, h('button', { class: 'btn sm', onclick: async () => { await api('coupons', { method: 'POST', body: { code: c.code, pct: c.pct, active: !c.active, expires: c.expires ? new Date(c.expires + 10800000).toISOString().slice(0, 10) : '', note: c.note } }); shell(); } }, c.active ? 'فعّال' : 'موقوف')),
-          h('td', {}, h('button', { class: 'btn sm bad', onclick: async () => { if (confirm('حذف الكوبون؟')) { await api('coupons/' + encodeURIComponent(c.code), { method: 'DELETE' }); shell(); } } }, ic('trash'))))))))
-        : h('div', { class: 'card' }, empty('tag', 'لا توجد كوبونات بعد.')));
-  }
-
-  /* ---------- الإعدادات ---------- */
-  async function settings(el) {
-    el.append(pageHead('الإعدادات'));
-    const s = await api('settings');
-    const ff = h('input', { type: 'number', min: 0, value: s.free_from });
-    el.append(h('div', { class: 'card' }, h('label', {}, 'الشحن مجاني للطلبات من (ر.س)'), ff,
-      h('button', { class: 'btn pri', style: 'margin-top:10px', onclick: async () => { const x = await api('settings', { method: 'POST', body: { free_from: ff.value } }); toast(x.ok ? 'تم الحفظ' : 'قيمة غير صالحة'); } }, 'حفظ')),
-      h('div', { class: 'card' }, h('b', {}, 'الدفع الإلكتروني (Stream)'),
-        h('p', { class: 'mut' }, s.stream ? 'مفتاح Stream مفعّل: الدفع بالبطاقة ظاهر في المتجر وتُتحقق الدفعات من الخادم تلقائيا.' : 'مفتاح Stream غير مضاف بعد: أضف STREAM_API_KEY و STREAM_API_SECRET في Cloudflare (Production) ثم أعد النشر لتفعيل الدفع.'),
-        h('p', { class: 'mut' }, 'رابط الويب هوك في لوحة Stream: ' + location.origin + '/api/pay/webhook' + (s.webhook ? ' (السر مضاف)' : ' (اختياري: أضف STREAM_WEBHOOK_SECRET)')),
-        h('button', { class: 'btn pri', style: 'margin-top:10px', disabled: !s.stream, onclick: async () => { const x = await api('stream/sync', { method: 'POST', body: {} }); toast(x.ok ? ('تمت المزامنة: ' + x.added + ' منتج جديد') : 'تعذّرت المزامنة'); } }, 'مزامنة المنتجات مع Stream')),
-      h('div', { class: 'card' }, h('b', {}, 'كلمة سر لوحة التحكم'),
-        h('p', { class: 'mut' }, 'لتغييرها: افتح Cloudflare → مشروع mirwaf → Settings → Environment variables (تبويب Production) → عدّل ADMIN_PASSWORD → احفظ → أعد النشر (Retry deployment).')));
-  }
-
-  api('me').then(r => (r.ok ? shell() : login())).catch(() => { });
+  A.views.dash = A.views.dash; // مرجع
+  A.boot = boot;
+  A.api('me').then(r => r.ok ? boot() : login()).catch(() => { });
 })();

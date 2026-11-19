@@ -1,6 +1,7 @@
 // واجهة المتجر + لوحة الأدمن. مسار واحد يوزّع الطلبات: /api/<...>
 import { J, clean, dig, ipHash, sameOrigin, readJson } from '../_lib/util.js';
-import { init, effectiveCatalog, findCoupon, getFreeFrom, setSetting } from '../_lib/db.js';
+import { init, effectiveCatalog, findCoupon, getFreeFrom, getSetting, setSetting } from '../_lib/db.js';
+import { streamOn, createProduct, createPaymentLink, getInvoice, verifyWebhook } from '../_lib/stream.js';
 import { isAdmin, adminEnabled, makeCookie, clearCookie, loginAttempt, revokeSessions } from '../_lib/auth.js';
 
 const STATUSES = ['new', 'confirmed', 'shipped', 'done', 'cancelled'];
@@ -26,6 +27,8 @@ export async function onRequest(context) {
     if (a === 'coupon' && m === 'POST') return couponCheck(request, env);
     if (a === 'orders' && m === 'POST') return createOrder(context);
     if (a === 'pay' && b === 'verify' && m === 'POST') return payVerify(request, env);
+    if (a === 'pay' && b === 'start' && m === 'POST') return payStart(request, env);
+    if (a === 'pay' && b === 'webhook' && m === 'POST') return payWebhook(request, env);
 
     // ---------- أدمن ----------
     if (a === 'admin') {
@@ -54,7 +57,8 @@ export async function onRequest(context) {
       if (b === 'coupons' && m === 'GET') return couponsList(env);
       if (b === 'coupons' && m === 'POST') return couponSave(request, env);
       if (b === 'coupons' && c && m === 'DELETE') return couponDelete(env, c);
-      if (b === 'settings' && m === 'GET') return J({ ok: true, free_from: await getFreeFrom(env), moyasar: !!env.MOYASAR_SECRET_KEY });
+      if (b === 'settings' && m === 'GET') return J({ ok: true, free_from: await getFreeFrom(env), stream: streamOn(env), webhook: !!env.STREAM_WEBHOOK_SECRET });
+      if (b === 'stream' && c === 'sync' && m === 'POST') return streamSync(env);
       if (b === 'settings' && m === 'POST') return settingsSave(request, env);
     }
     return J({ ok: false, error: 'not_found' }, 404);
@@ -71,7 +75,7 @@ async function catalog(env) {
     items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden };
     if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, short: e.short || '', desc: e.desc || '' }); }
   }
-  return J({ ok: true, freeFrom: await getFreeFrom(env), items, extra }, 200, { 'cache-control': 'public, max-age=30' });
+  return J({ ok: true, pay: streamOn(env), freeFrom: await getFreeFrom(env), items, extra }, 200, { 'cache-control': 'public, max-age=30' });
 }
 
 async function couponCheck(request, env) {
@@ -150,23 +154,79 @@ async function createOrder({ request, env, waitUntil }) {
   return J({ ok: true, ref, at: now, sub, d, pct: cp ? cp.pct : 0, free: !!free, total, coupon: cp ? cp.code : '' });
 }
 
-// التحقق من دفعة Moyasar من الخادم (المبلغ والعملة ورقم الطلب)، وهذا ما يمنع التلاعب من المتصفح.
-async function verifyPayment(env, order, payId) {
-  if (!/^[A-Za-z0-9-]{8,64}$/.test(payId)) return { ok: false, error: 'invalid' };
-  const dup = await env.DB.prepare('SELECT ref FROM orders WHERE pay_id = ? AND ref <> ? AND pay_verified = 1').bind(payId, order.ref).first();
+// التحقق من دفعة Stream من الخادم: نجلب الفاتورة بالمفتاح السري ونطابق رابط الدفع والمبلغ والعملة.
+async function verifyPayment(env, order, invId) {
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(invId)) return { ok: false, error: 'invalid' };
+  const dup = await env.DB.prepare('SELECT ref FROM orders WHERE pay_id = ? AND ref <> ? AND pay_verified = 1').bind(invId, order.ref).first();
   if (dup) return { ok: false, error: 'duplicate' };
-  if (!env.MOYASAR_SECRET_KEY) {
-    await env.DB.prepare('UPDATE orders SET pay_id = ?, pay_status = ?, pay_verified = 0, pay_info = ?, updated_at = ? WHERE ref = ?').bind(payId, 'unverified', 'no secret key configured', Date.now(), order.ref).run();
+  if (!streamOn(env)) {
+    await env.DB.prepare('UPDATE orders SET pay_id = ?, pay_status = ?, pay_verified = 0, pay_info = ?, updated_at = ? WHERE ref = ?').bind(invId, 'unverified', 'no stream key configured', Date.now(), order.ref).run();
     return { ok: true, verified: false, status: 'unverified' };
   }
-  const r = await fetch('https://api.moyasar.com/v1/payments/' + encodeURIComponent(payId), { headers: { authorization: 'Basic ' + btoa(env.MOYASAR_SECRET_KEY + ':') } });
-  if (!r.ok) return { ok: false, error: 'gateway' };
-  const p = await r.json();
-  const meta = p.metadata || {};
-  const good = p.status === 'paid' && p.currency === 'SAR' && Number(p.amount) === order.total * 100 && String(meta.order_ref || '') === order.ref;
-  const info = `amount=${p.amount} ${p.currency} status=${p.status}` + (p.source && p.source.company ? ' ' + p.source.company : '');
-  await env.DB.prepare('UPDATE orders SET pay_id = ?, pay_status = ?, pay_verified = ?, pay_info = ?, updated_at = ? WHERE ref = ?').bind(payId, String(p.status || '').slice(0, 20), good ? 1 : 0, info.slice(0, 200), Date.now(), order.ref).run();
-  return { ok: true, verified: good, status: String(p.status || '') };
+  const r = await getInvoice(env, invId);
+  if (!r.ok || !r.data) return { ok: false, error: 'gateway' };
+  const inv = r.data;
+  const link = await getSetting(env, 'paylink:' + order.ref, '');
+  const total = Number(inv.total_amount), paidAmt = Number(inv.paid_amount), rem = Number(inv.remaining_amount);
+  const paid = inv.status === 'COMPLETED' || (paidAmt >= total && total > 0 && !(rem > 0));
+  const good = !!link && inv.payment_link_id === link && paid && (inv.currency || 'SAR') === 'SAR' && Math.round(total * 100) === order.total * 100;
+  const info = `total=${inv.total_amount} paid=${inv.paid_amount} ${inv.currency || ''} status=${inv.status}`;
+  await env.DB.prepare('UPDATE orders SET pay_id = ?, pay_status = ?, pay_verified = ?, pay_info = ?, updated_at = ? WHERE ref = ?').bind(invId, String(inv.status || '').slice(0, 20), good ? 1 : 0, info.slice(0, 200), Date.now(), order.ref).run();
+  return { ok: true, verified: good, status: good ? 'paid' : String(inv.status || '') };
+}
+
+// بدء الدفع: ننشئ منتجًا لهذا الطلب بالمبلغ النهائي (يشمل الخصم والشحن) ورابط دفع، ونعيد الرابط للمتصفح.
+async function payStart(request, env) {
+  if (!sameOrigin(request)) return J({ ok: false, error: 'origin' }, 403);
+  if (!streamOn(env)) return J({ ok: false, error: 'pay_off' }, 503);
+  const b = await readJson(request, 500);
+  if (!b || typeof b.ref !== 'string') return J({ ok: false, error: 'invalid' }, 400);
+  const o = await env.DB.prepare('SELECT ref, total, method, pay_verified, status FROM orders WHERE ref = ?').bind(b.ref.slice(0, 32)).first();
+  if (!o || o.method !== 'card' || o.status === 'cancelled') return J({ ok: false, error: 'not_found' }, 404);
+  if (o.pay_verified) return J({ ok: true, paid: true });
+  if (!(o.total > 0)) return J({ ok: false, error: 'invalid' }, 400);
+  const cached = await getSetting(env, 'payurl:' + o.ref, '');
+  if (cached) return J({ ok: true, url: cached });
+  const origin = new URL(request.url).origin;
+  const pr = await createProduct(env, 'طلب لوتشي ' + o.ref, o.total, 'LUCE order ' + o.ref);
+  if (!pr.ok || !pr.data || !pr.data.id) return J({ ok: false, error: 'gateway' }, 502);
+  const pl = await createPaymentLink(env, pr.data.id, o.ref, origin);
+  if (!pl.ok || !pl.data || !pl.data.id || !pl.data.url) return J({ ok: false, error: 'gateway' }, 502);
+  await setSetting(env, 'paylink:' + o.ref, pl.data.id);
+  await setSetting(env, 'payurl:' + o.ref, pl.data.url);
+  return J({ ok: true, url: pl.data.url });
+}
+
+// ويب هوك Stream: لا نثق بمحتواه، نستخدمه فقط كإشارة ثم نعيد التحقق من الفاتورة عبر API.
+async function payWebhook(request, env) {
+  const raw = await request.text();
+  if (raw.length > 100000) return J({ ok: false }, 413);
+  if (!(await verifyWebhook(env.STREAM_WEBHOOK_SECRET, request.headers.get('x-webhook-signature') || request.headers.get('x-signature') || request.headers.get('stream-signature'), raw))) return J({ ok: false, error: 'sig' }, 401);
+  let ev; try { ev = JSON.parse(raw); } catch (e) { return J({ ok: false }, 400); }
+  const d = (ev && (ev.data || ev.payload)) || ev || {};
+  const meta = d.custom_metadata || (d.payment_link && d.payment_link.custom_metadata) || (d.metadata) || {};
+  const ref = String(meta.order_ref || '').slice(0, 32);
+  const invId = String(d.invoice_id || (d.invoice && d.invoice.id) || d.id || '');
+  if (ref && invId) {
+    const o = await env.DB.prepare('SELECT ref, total FROM orders WHERE ref = ? AND method = ?').bind(ref, 'card').first();
+    if (o) await verifyPayment(env, o, invId);
+  }
+  return J({ ok: true });
+}
+
+// مزامنة منتجات المتجر مع Stream (مرة واحدة لكل منتج، بدون تكرار).
+async function streamSync(env) {
+  if (!streamOn(env)) return J({ ok: false, error: 'pay_off' }, 503);
+  const cat = await effectiveCatalog(env);
+  const done = [], failed = [], skipped = [];
+  for (const [id, p] of Object.entries(cat)) {
+    if (p.hidden || !(p.price > 0)) { skipped.push(id); continue; }
+    if (await getSetting(env, 'stream_pid:' + id + ':' + p.price, '')) { skipped.push(id); continue; }
+    const r = await createProduct(env, p.name, p.price, p.en || '');
+    if (r.ok && r.data && r.data.id) { await setSetting(env, 'stream_pid:' + id + ':' + p.price, r.data.id); done.push(id); }
+    else failed.push({ id, status: r.status });
+  }
+  return J({ ok: failed.length === 0, added: done.length, skipped: skipped.length, failed });
 }
 
 async function payVerify(request, env) {

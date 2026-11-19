@@ -144,7 +144,7 @@
         ? h('span', { class: 'pill ' + (o.pay_verified ? 'ok' : 'no') }, o.pay_verified ? 'مدفوع ✓' : 'بطاقة · ' + (o.pay_status === 'unverified' ? 'بانتظار التحقق' : o.pay_status ? 'غير مؤكد' : 'لم يكتمل'))
         : h('span', { class: 'pill' }, 'واتساب');
       const verify = o.method === 'card' && !o.pay_verified ? h('button', { class: 'btn sm', onclick: async () => {
-        const id = prompt('رقم عملية Moyasar (من لوحة Moyasar):'); if (!id) return;
+        const id = prompt('رقم فاتورة Stream (invoice id من لوحة Stream):'); if (!id) return;
         const r = await api('orders/' + encodeURIComponent(o.ref) + '/verify', { method: 'POST', body: { id } });
         toast(r.verified ? 'تم التحقق: مدفوع' : 'لم يتحقق الدفع'); load();
       } }, 'تحقق من الدفع') : null;
@@ -290,8 +290,10 @@
     const ff = h('input', { type: 'number', min: 0, value: s.free_from });
     el.append(h('div', { class: 'card' }, h('label', {}, 'الشحن مجاني للطلبات من (ر.س)'), ff,
       h('button', { class: 'btn pri', style: 'margin-top:10px', onclick: async () => { const x = await api('settings', { method: 'POST', body: { free_from: ff.value } }); toast(x.ok ? 'تم الحفظ' : 'قيمة غير صالحة'); } }, 'حفظ')),
-      h('div', { class: 'card' }, h('b', {}, 'الدفع الإلكتروني (Moyasar)'),
-        h('p', { class: 'mut' }, s.moyasar ? 'مفتاح Moyasar السري مفعّل: تُتحقق الدفعات من الخادم تلقائيا.' : 'مفتاح Moyasar السري غير مضاف بعد: الدفعات بالبطاقة تُحفظ لكن تظهر «غير مؤكد» حتى تضيف المفتاح (MOYASAR_SECRET_KEY) من إعدادات Cloudflare.')),
+      h('div', { class: 'card' }, h('b', {}, 'الدفع الإلكتروني (Stream)'),
+        h('p', { class: 'mut' }, s.stream ? 'مفتاح Stream مفعّل: الدفع بالبطاقة ظاهر في المتجر وتُتحقق الدفعات من الخادم تلقائيا.' : 'مفتاح Stream غير مضاف بعد: أضف STREAM_API_KEY و STREAM_API_SECRET في Cloudflare (Production) ثم أعد النشر لتفعيل الدفع.'),
+        h('p', { class: 'mut' }, 'رابط الويب هوك في لوحة Stream: ' + location.origin + '/api/pay/webhook' + (s.webhook ? ' (السر مضاف)' : ' (اختياري: أضف STREAM_WEBHOOK_SECRET)')),
+        h('button', { class: 'btn pri', style: 'margin-top:10px', disabled: !s.stream, onclick: async () => { const x = await api('stream/sync', { method: 'POST', body: {} }); toast(x.ok ? ('تمت المزامنة: ' + x.added + ' منتج جديد') : 'تعذّرت المزامنة'); } }, 'مزامنة المنتجات مع Stream')),
       h('div', { class: 'card' }, h('b', {}, 'كلمة سر لوحة التحكم'),
         h('p', { class: 'mut' }, 'لتغييرها: افتح Cloudflare → مشروع mirwaf → Settings → Environment variables (تبويب Production) → عدّل ADMIN_PASSWORD → احفظ → أعد النشر (Retry deployment).')));
   }

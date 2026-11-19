@@ -749,10 +749,8 @@ const CONFIG = {
   freeFrom: 200,         // حد التوصيل المجاني بالريال
   code: 'LUCE10',       // كود الخصم
   pct: 10,               // نسبة الخصم
-  // ===== الدفع الإلكتروني (Moyasar) =====
+  // ===== الدفع الإلكتروني (Stream) — المفتاح السري على الخادم فقط (Cloudflare)، ويُفعَّل تلقائيًا =====
   // ضع هنا المفتاح العام (Publishable Key) فقط: يبدأ بـ pk_test_ للتجربة أو pk_live_ للتشغيل. لا تضع المفتاح السري (sk_) هنا أبدًا.
-  moyasarKey: '',
-  applePay: false,       // فعّله بعد تفعيل Apple Pay من لوحة Moyasar وإضافة ملف تحقق النطاق
   freelanceNo: ''        // رقم وثيقة العمل الحر: يظهر في تذييل الموقع إن وُضع
 };
 
@@ -1370,8 +1368,7 @@ const DICT = {
   'لحظات ونؤكد لك العملية.': 'One moment while we confirm.',
   'طريقة الدفع': 'Payment method',
   'ادفع الآن إلكترونيًا': 'Pay online now',
-  'مدى · فيزا · ماستركارد · ستس باي': 'mada · Visa · Mastercard · STC Pay',
-  'مدى · فيزا · ماستركارد · ستس باي · Apple Pay': 'mada · Visa · Mastercard · STC Pay · Apple Pay',
+  'مدى · فيزا · ماستركارد': 'mada · Visa · Mastercard',
   'الدفع الإلكتروني يُفعَّل قريبًا': 'Online payment is coming soon',
   'أكمل عبر واتساب': 'Continue on WhatsApp',
   'نرسل لك تأكيد الطلب وطريقة الدفع على واتساب.': 'We confirm your order and payment method on WhatsApp.',
@@ -1379,7 +1376,7 @@ const DICT = {
   'الدفع الآمن': 'Secure payment',
   'أكمل دفع طلبك بالبطاقة.': 'Complete your payment by card.',
   'إجمالي المبلغ': 'Amount due',
-  'يتم الدفع عبر بوابة Moyasar. بيانات بطاقتك لا تمر بخوادمنا ولا نحتفظ بها.': "Payment is processed by Moyasar. Your card details never touch our servers and we don't store them.",
+  'يتم الدفع عبر بوابة Stream. بيانات بطاقتك لا تمر بخوادمنا ولا نحتفظ بها.': "Payment is processed by Stream. Your card details never touch our servers and we don't store them.",
   'الدفع بطريقة أخرى (واتساب)': 'Pay another way (WhatsApp)',
   'تعذّر تحميل نموذج الدفع. تحقق من اتصالك أو اختر واتساب.': 'The payment form could not load. Check your connection or choose WhatsApp.',
   'تم استلام دفعك': 'Payment received',
@@ -1395,7 +1392,7 @@ const DICT = {
   'الاسترجاع والاستبدال': 'Returns and exchanges',
   'وفق نظام التجارة الإلكترونية في المملكة، يمكنك طلب الإرجاع خلال 7 أيام من الاستلام للمنتجات غير المستخدمة في عبوتها الأصلية. يُستثنى من ذلك البن بعد فتح العبوة. للاستبدال أو الإرجاع تواصل معنا عبر واتساب.': 'Under Saudi e-commerce law you may request a return within 7 days of receipt for unused products in their original packaging. Coffee beans are excluded once the pack is opened. For exchanges or returns, contact us on WhatsApp.',
   'الدفع': 'Payment',
-  'نقبل مدى وفيزا وماستركارد وستس باي عبر بوابة Moyasar عند تفعيل الدفع الإلكتروني، أو يمكنك إتمام الطلب عبر واتساب. جميع الأسعار بالريال السعودي.': 'We accept mada, Visa, Mastercard and STC Pay through Moyasar when online payment is enabled, or you can complete your order on WhatsApp. All prices are in Saudi riyals.',
+  'نقبل مدى وفيزا وماستركارد عبر بوابة Stream عند تفعيل الدفع الإلكتروني، أو يمكنك إتمام الطلب عبر واتساب. جميع الأسعار بالريال السعودي.': 'We accept mada, Visa and Mastercard through Stream when online payment is enabled, or you can complete your order on WhatsApp. All prices are in Saudi riyals.',
   'الخصوصية': 'Privacy',
   'نجمع الاسم والجوال والعنوان فقط لتجهيز طلبك وتوصيله. لا نبيع بياناتك ولا نشاركها مع أحد غير شركة التوصيل وبوابة الدفع. بيانات البطاقة تُعالج لدى بوابة الدفع ولا تصل إلينا.': 'We collect your name, phone and address only to prepare and deliver your order. We never sell your data or share it beyond the courier and the payment gateway. Card details are handled by the payment gateway and never reach us.',
   'وثيقة العمل الحر': 'Freelance work document'
@@ -1562,6 +1559,7 @@ async function apiCall(path, body) {
 async function loadCatalog() {
   const d = await apiCall('catalog');
   if (!d || !d.items) return;
+  PAY_ON = !!d.pay;
   if (d.freeFrom >= 0) CONFIG.freeFrom = d.freeFrom;
   (d.extra || []).forEach(e => {
     if (AR0.P.some(x => x.id === e.id)) return;
@@ -1826,16 +1824,8 @@ function holoInit() {
 window.addEventListener('resize', () => { if (HP.cv) holoSize(); });
 document.addEventListener('pointermove', e => { const f = e.target.closest && e.target.closest('.foil'); if (f) { const r = f.getBoundingClientRect(); f.style.setProperty('--fx', ((e.clientX - r.left) / r.width * 100).toFixed(0) + '%'); f.style.setProperty('--fy', ((e.clientY - r.top) / r.height * 100).toFixed(0) + '%'); } }, { passive: true });
 
-/* ===================== الدفع الإلكتروني (Moyasar) ===================== */
-const PAY_ON = /^pk_(test|live)_[A-Za-z0-9]{10,}$/.test(String(CONFIG.moyasarKey || ''));
-const MOY = { css: 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.css', js: 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.js' };
-function loadMoyasar() {
-  return new Promise((res, rej) => {
-    if (window.Moyasar) return res();
-    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = MOY.css; document.head.appendChild(l);
-    const sc = document.createElement('script'); sc.src = MOY.js; sc.onload = res; sc.onerror = () => rej(new Error('moyasar')); document.head.appendChild(sc);
-  });
-}
+/* ===================== الدفع الإلكتروني (Stream) ===================== */
+let PAY_ON = false;
 function loadPending() {
   const x = store.get('mirwaf.pending', null);
   if (!x || typeof x !== 'object' || !x.ref || !Array.isArray(x.items) || !x.c) return null;
@@ -1845,17 +1835,12 @@ function loadPending() {
 }
 function mountPay() {
   const o = S.last; const box = $('#mysr'); if (!o || !box) return;
-  loadMoyasar().then(() => {
-    const methods = ['creditcard', 'stcpay']; if (CONFIG.applePay) methods.push('applepay');
-    const cfg = {
-      element: '.mysr-form', amount: Math.round(o.total * 100), currency: 'SAR', description: 'Luce order ' + o.ref,
-      publishable_api_key: CONFIG.moyasarKey, callback_url: location.origin + location.pathname,
-      methods, supported_networks: ['mada', 'visa', 'mastercard'], language: isEn() ? 'en' : 'ar', fixed_width: false,
-      metadata: { order_ref: o.ref, name: o.c.name, phone: o.c.phone, city: o.c.city, items: String(o.count) }
-    };
-    if (CONFIG.applePay) cfg.apple_pay = { country: 'SA', label: 'Luce', validate_merchant_url: 'https://api.moyasar.com/v1/applepay/initiate' };
-    window.Moyasar.init(cfg);
-  }).catch(() => { box.innerHTML = `<p class="msg msg--err" role="alert">تعذّر تحميل نموذج الدفع. تحقق من اتصالك أو اختر واتساب.</p>`; });
+  const fail = () => { box.innerHTML = `<p class="msg msg--err" role="alert">تعذّر بدء الدفع. حاول مرة أخرى أو اختر واتساب.</p><p style="margin-top:12px"><button class="btn btn--sm" type="button" id="payRetry">إعادة المحاولة</button></p>`; const b = $('#payRetry'); if (b) b.onclick = () => { box.innerHTML = '<p class="lead">جارٍ تحويلك إلى صفحة الدفع الآمنة…</p>'; mountPay(); }; };
+  apiCall('pay/start', { ref: o.ref }).then(r => {
+    if (r && r.ok && r.paid) { go('done'); return; }
+    if (r && r.ok && typeof r.url === 'string' && /^https:\/\/[A-Za-z0-9.-]+\.streampay\.sa\//.test(r.url)) { location.href = r.url; return; }
+    fail();
+  }).catch(fail);
 }
 
 /* ===================== الصفحات ===================== */
@@ -2086,7 +2071,7 @@ function vCheckout() {
           ${fld('f-notes', 'ملاحظات للطلب (اختياري)', 'rows="3" maxlength="500"', true, 'textarea')}
         </div>
         <fieldset class="paym" style="border:0;padding:0;margin-inline:0;min-width:0"><legend><h2>طريقة الدفع</h2></legend>
-          <label class="pmo"><input type="radio" name="pm" value="card" ${PAY_ON ? 'checked' : 'disabled'}><div><b>ادفع الآن إلكترونيًا</b><span>${PAY_ON ? (CONFIG.applePay ? 'مدى · فيزا · ماستركارد · ستس باي · Apple Pay' : 'مدى · فيزا · ماستركارد · ستس باي') : 'الدفع الإلكتروني يُفعَّل قريبًا'}</span></div></label>
+          <label class="pmo"><input type="radio" name="pm" value="card" ${PAY_ON ? 'checked' : 'disabled'}><div><b>ادفع الآن إلكترونيًا</b><span>${PAY_ON ? 'مدى · فيزا · ماستركارد' : 'الدفع الإلكتروني يُفعَّل قريبًا'}</span></div></label>
           <label class="pmo"><input type="radio" name="pm" value="wa" ${PAY_ON ? '' : 'checked'}><div><b>أكمل عبر واتساب</b><span>نرسل لك تأكيد الطلب وطريقة الدفع على واتساب.</span></div></label>
         </fieldset>
         <button class="btn btn--full" type="submit" id="coBtn" data-total="${fmt(t.total)}" style="margin-top:22px;height:54px">${PAY_ON ? `متابعة إلى الدفع · <span class="num">${fmt(t.total)}</span> ريال` : `تأكيد الطلب · <span class="num">${fmt(t.total)}</span> ريال`}</button>
@@ -2107,8 +2092,8 @@ function vPay() {
   return `<div class="wrap"><div class="paybox">
     <h1>الدفع الآمن</h1><p class="lead">أكمل دفع طلبك بالبطاقة.</p>
     <div class="paytot num"><span>إجمالي المبلغ</span><span>${fmt(o.total)} ريال</span></div>
-    <div id="mysr"><div class="mysr-form"></div></div>
-    <p class="paysafe">يتم الدفع عبر بوابة Moyasar. بيانات بطاقتك لا تمر بخوادمنا ولا نحتفظ بها.</p>
+    <div id="mysr"><p class="lead">جارٍ تحويلك إلى صفحة الدفع الآمنة…</p></div>
+    <p class="paysafe">يتم الدفع عبر بوابة Stream. بيانات بطاقتك لا تمر بخوادمنا ولا نحتفظ بها.</p>
     <p style="margin-top:14px"><a class="btn btn--line btn--sm" href="${WA ? waUrl(o) : '#shop'}" target="_blank" rel="noopener noreferrer">الدفع بطريقة أخرى (واتساب)</a></p>
   </div></div>`;
 }
@@ -2116,7 +2101,7 @@ function vPolicies() {
   return `<div class="wrap"><div class="polic"><h1>سياسات المتجر</h1>
     <h2>الشحن والتوصيل</h2><p>التوصيل داخل المملكة العربية السعودية. التوصيل مجاني للطلبات فوق 200 ريال، وتُحدد رسوم الطلبات الأقل عند تأكيد الطلب.</p>
     <h2>الاسترجاع والاستبدال</h2><p>وفق نظام التجارة الإلكترونية في المملكة، يمكنك طلب الإرجاع خلال 7 أيام من الاستلام للمنتجات غير المستخدمة في عبوتها الأصلية. يُستثنى من ذلك البن بعد فتح العبوة. للاستبدال أو الإرجاع تواصل معنا عبر واتساب.</p>
-    <h2>الدفع</h2><p>نقبل مدى وفيزا وماستركارد وستس باي عبر بوابة Moyasar عند تفعيل الدفع الإلكتروني، أو يمكنك إتمام الطلب عبر واتساب. جميع الأسعار بالريال السعودي.</p>
+    <h2>الدفع</h2><p>نقبل مدى وفيزا وماستركارد عبر بوابة Stream عند تفعيل الدفع الإلكتروني، أو يمكنك إتمام الطلب عبر واتساب. جميع الأسعار بالريال السعودي.</p>
     <h2>الخصوصية</h2><p>نجمع الاسم والجوال والعنوان فقط لتجهيز طلبك وتوصيله. لا نبيع بياناتك ولا نشاركها مع أحد غير شركة التوصيل وبوابة الدفع. بيانات البطاقة تُعالج لدى بوابة الدفع ولا تصل إلينا.</p>
   </div></div>`;
 }
@@ -2437,14 +2422,16 @@ $('#footCats').innerHTML = footCatsHTML();
 })();
 (function payReturn() {
   try {
-    const q = new URLSearchParams(location.search), id = q.get('id'), st = q.get('status');
-    if (id && st) {
+    const q = new URLSearchParams(location.search), id = q.get('invoice_id') || q.get('id') || '', st = q.get('status');
+    if (st && (id || q.has('payment_id') || q.has('invoice_id'))) {
       const o = loadPending();
       if (o) {
-        o.pay = { id: clean(id, 64), status: st === 'paid' ? 'checking' : clean(st, 16) }; S.last = o;
-        if (st === 'paid') (async () => {
+        S.last = o;
+        if (st !== 'paid') { history.replaceState(null, '', location.pathname + '#pay'); return; }
+        o.pay = { id: clean(id, 80), status: 'checking' };
+        (async () => {
           const r = await apiCall('pay/verify', { ref: o.ref, id: o.pay.id });
-          if (!r) { o.pay.status = 'paid'; }
+          if (!r) { o.pay.status = 'review'; }
           else if (r.ok && r.verified) { o.pay.status = 'paid'; o.pay.ok = 1; }
           else if (r.ok && r.status === 'unverified') { o.pay.status = 'paid'; }
           else o.pay.status = 'review';

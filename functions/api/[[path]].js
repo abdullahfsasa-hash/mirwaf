@@ -101,9 +101,13 @@ async function createOrder({ request, env, waitUntil }) {
   if (!b || !b.c || typeof b.c !== 'object' || !Array.isArray(b.items)) return J({ ok: false, error: 'invalid' }, 400);
 
   const name = clean(b.c.name, 80), phone = dig(clean(b.c.phone, 20)), notes = clean(b.c.notes, 500, true);
-  const av = validateAddress(b.c); // العنوان الوطني: مبنى 4 + بريدي 5 + إضافي 4 + حي + شارع + مدينة
+  let av = validateAddress(b.c); // العنوان الوطني: مبنى 4 + بريدي 5 + إضافي 4 + حي + شارع + مدينة
+  // توافق مؤقت: صفحات المتجر القديمة المخزّنة عند الزبائن ترسل عنوانًا نصيًا فقط، فنقبله (بدون حقول وطنية) بدل رفض الطلب.
+  const legacyAddr = clean(b.c.addr, 200), legacyCity = clean(b.c.city, 60);
+  const noStructured = !['district', 'street', 'bno', 'post', 'extra', 'short'].some(k => String(b.c[k] || '').trim());
+  if (!av.ok && noStructured && legacyAddr.length >= 4 && legacyCity.length >= 2) av = { ok: true, a: { city: legacyCity, district: '', street: '', bno: '', post: '', extra: '', short: '' }, legacy: legacyAddr };
   if (name.length < 3 || !av.ok || !/^\+?\d{9,15}$/.test(phone.replace(/[\s-]/g, ''))) return J({ ok: false, error: 'invalid', field: av.ok ? '' : av.field }, 400);
-  const na = av.a, city = na.city, address = addrLine(na);
+  const na = av.a, city = na.city, address = av.legacy || addrLine(na);
   const cid = String(b.cid || '');
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(cid)) return J({ ok: false, error: 'invalid' }, 400);
   const method = b.method === 'card' ? 'card' : 'wa', lang = b.lang === 'en' ? 'en' : 'ar';

@@ -506,10 +506,10 @@ h1,h2,h3,h4{font-family:var(--font-display);font-weight:500;text-wrap:balance;li
 .sq{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:760px;margin-inline:auto}
 
 /* المحادثة */
-.fab{position:fixed;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:70;width:54px;height:54px;border-radius:50%;background:var(--btn-bg);color:var(--btn-fg);display:grid;place-items:center;box-shadow:0 12px 28px -8px rgba(0,0,0,.45);transition:transform .25s,bottom .25s}
-.fab:hover{transform:scale(1.07)}
+.fab{position:fixed;inset-inline-start:calc(16px + env(safe-area-inset-left,0px));right:auto;left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:70;width:42px;height:42px;border-radius:50%;background:var(--card);color:var(--green);border:1px solid var(--line);display:grid;place-items:center;box-shadow:0 6px 18px -10px rgba(0,0,0,.35);opacity:.9;transition:transform .2s,opacity .2s,bottom .25s}
+.fab:hover{transform:scale(1.05);opacity:1}
 body.has-sticky .fab{bottom:calc(88px + env(safe-area-inset-bottom,0px))}
-.chat{position:fixed;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:75;width:min(360px,calc(100vw - 36px));max-height:min(560px,calc(100vh - 140px));display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);opacity:0;visibility:hidden;transform:translateY(12px) scale(.98);transform-origin:bottom right;transition:opacity .25s,transform .25s,visibility 0s .25s}
+.chat{position:fixed;left:calc(16px + env(safe-area-inset-left,0px));bottom:calc(68px + env(safe-area-inset-bottom,0px));z-index:75;width:min(360px,calc(100vw - 36px));max-height:min(560px,calc(100vh - 140px));display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);opacity:0;visibility:hidden;transform:translateY(12px) scale(.98);transform-origin:bottom right;transition:opacity .25s,transform .25s,visibility 0s .25s}
 body.has-sticky .chat{bottom:calc(150px + env(safe-area-inset-bottom,0px))}
 .chat.open{opacity:1;visibility:visible;transform:none;transition:opacity .25s,transform .25s}
 .chat__h{display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--green);color:#F3ECDD;border-radius:20px 20px 0 0}

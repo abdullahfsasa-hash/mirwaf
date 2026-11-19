@@ -3,6 +3,9 @@
 (() => {
   const app = document.getElementById('app');
   const A = window.A = { views: {}, state: {} };
+  // replaceChildren يحوّل null إلى النص "null"؛ نتجاهل القيم الفارغة.
+  const rc = Element.prototype.replaceChildren;
+  Element.prototype.replaceChildren = function (...k) { return rc.apply(this, k.flat(2).filter(c => c != null && c !== false)); };
   A.ST = { new: 'جديد', confirmed: 'مؤكد', shipped: 'تم الشحن', done: 'مكتمل', cancelled: 'ملغي' };
   A.STK = Object.keys(A.ST);
   A.CATS = { beans: 'بن', cups: 'أكواب', gear: 'أدوات', filters: 'فلاتر', matcha: 'ماتشا' };

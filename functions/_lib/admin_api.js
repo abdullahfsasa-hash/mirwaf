@@ -58,7 +58,7 @@ const event = (env, ref, type, text) => env.DB.prepare('INSERT INTO order_events
 /* ============ الإعدادات ============ */
 const SETTINGS = {
   store_name: v => clean(v, 60),
-  whatsapp_display: v => { const d = dig(String(v || '')).replace(/\D/g, ''); return d === '' ? '' : (/^\d{8,15}$/.test(d) ? d : null); },
+  whatsapp_display: v => { const raw = String(v || '').trim(), d = dig(raw).replace(/\D/g, ''); return raw === '' ? '' : (/^\d{8,15}$/.test(d) ? d : null); },
   store_email: v => { const s = clean(v, 100); return s === '' || /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(s) ? s : null; },
   store_address: v => clean(v, 200),
   announcement: v => clean(v, 160),

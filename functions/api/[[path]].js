@@ -84,7 +84,7 @@ async function catalog(env) {
     items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden };
     if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, short: e.short || '', desc: e.desc || '' }); }
   }
-  return J({ ok: true, pay: streamOn(env), freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: !!env.SPL_API_KEY }, 200, { 'cache-control': 'public, max-age=30' });
+  return J({ ok: true, pay: streamOn(env) && (await getSetting(env, 'pay_card_on', '1')) !== '0', freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: !!env.SPL_API_KEY }, 200, { 'cache-control': 'public, max-age=30' });
 }
 
 async function couponCheck(request, env) {
@@ -193,7 +193,7 @@ async function verifyPayment(env, order, invId) {
 // بدء الدفع: ننشئ منتجًا لهذا الطلب بالمبلغ النهائي (يشمل الخصم والشحن) ورابط دفع، ونعيد الرابط للمتصفح.
 async function payStart(request, env) {
   if (!sameOrigin(request)) return J({ ok: false, error: 'origin' }, 403);
-  if (!streamOn(env)) return J({ ok: false, error: 'pay_off' }, 503);
+  if (!streamOn(env) || (await getSetting(env, 'pay_card_on', '1')) === '0') return J({ ok: false, error: 'pay_off' }, 503);
   const b = await readJson(request, 500);
   if (!b || typeof b.ref !== 'string') return J({ ok: false, error: 'invalid' }, 400);
   const o = await env.DB.prepare('SELECT ref, total, method, pay_verified, status FROM orders WHERE ref = ?').bind(b.ref.slice(0, 32)).first();

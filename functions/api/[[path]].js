@@ -1,7 +1,7 @@
 // واجهة المتجر + لوحة الأدمن. مسار واحد يوزّع الطلبات: /api/<...>
 import { J, clean, dig, ipHash, sameOrigin, readJson } from '../_lib/util.js';
 import { init, effectiveCatalog, findCoupon, getFreeFrom, getSetting, setSetting } from '../_lib/db.js';
-import { streamOn, createProduct, createPaymentLink, getInvoice, verifyWebhook } from '../_lib/stream.js';
+import { streamOn, createProduct, findProductByName, createPaymentLink, getInvoice, verifyWebhook } from '../_lib/stream.js';
 import { isAdmin, adminEnabled, makeCookie, clearCookie, loginAttempt, revokeSessions } from '../_lib/auth.js';
 
 const STATUSES = ['new', 'confirmed', 'shipped', 'done', 'cancelled'];
@@ -221,10 +221,17 @@ async function streamSync(env) {
   const done = [], failed = [], skipped = [];
   for (const [id, p] of Object.entries(cat)) {
     if (p.hidden || !(p.price > 0)) { skipped.push(id); continue; }
-    if (await getSetting(env, 'stream_pid:' + id + ':' + p.price, '')) { skipped.push(id); continue; }
+    const key = 'stream_pid:' + id + ':' + p.price;
+    if (await getSetting(env, key, '')) { skipped.push(id); continue; }
+    // حجز ذرّي قبل الإنشاء: يمنع التكرار لو تزامن أكثر من طلب.
+    const claim = await env.DB.prepare("INSERT INTO settings (k, v) VALUES (?, 'pending') ON CONFLICT(k) DO NOTHING").bind(key).run();
+    if (!(claim.meta && claim.meta.changes === 1)) { skipped.push(id); continue; }
+    // لو المنتج موجود فعلاً في Stream بنفس الاسم، لا ننشئ نسخة جديدة.
+    const found = await findProductByName(env, p.name);
+    if (found.ok && found.id) { await setSetting(env, key, found.id); skipped.push(id); continue; }
     const r = await createProduct(env, p.name, p.price, p.en || '');
-    if (r.ok && r.data && r.data.id) { await setSetting(env, 'stream_pid:' + id + ':' + p.price, r.data.id); done.push(id); }
-    else failed.push({ id, status: r.status });
+    if (r.ok && r.data && r.data.id) { await setSetting(env, key, r.data.id); done.push(id); }
+    else { await env.DB.prepare("DELETE FROM settings WHERE k = ? AND v = 'pending'").bind(key).run(); failed.push({ id, status: r.status }); }
   }
   return J({ ok: failed.length === 0, added: done.length, skipped: skipped.length, failed });
 }

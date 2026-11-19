@@ -18,6 +18,14 @@ async function call(env, method, path, body) {
 export const createProduct = (env, name, amount, description) =>
   call(env, 'POST', '/products', { name: String(name).slice(0, 160), ...(description ? { description: String(description).slice(0, 500) } : {}), type: 'ONE_OFF', prices: [{ currency: 'SAR', amount }] });
 
+export async function findProductByName(env, name) {
+  const r = await call(env, 'GET', '/products?limit=100&active=true&search_term=' + encodeURIComponent(String(name).slice(0, 160)));
+  if (!r.ok || !r.data) return { ok: false, id: null };
+  const list = Array.isArray(r.data) ? r.data : (r.data.data || r.data.items || r.data.results || []);
+  const hit = list.find(x => x && x.name === String(name).slice(0, 160));
+  return { ok: true, id: hit ? hit.id : null };
+}
+
 export const createPaymentLink = (env, productId, ref, origin) =>
   call(env, 'POST', '/payment_links', {
     name: ('LUCE ' + ref).slice(0, 160),

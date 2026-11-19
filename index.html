@@ -554,6 +554,22 @@ textarea.inp{min-height:96px;resize:vertical;line-height:1.7}
 .done .ref{font:600 20px var(--font-display);letter-spacing:.12em;border:1px dashed var(--line);border-radius:12px;padding:8px 20px}
 .note{font-size:13px;color:var(--muted);max-width:46ch}
 .acct-sec{padding:18px 0;border-bottom:1px solid var(--line-2)}
+.gbtn{min-height:44px;display:flex;justify-content:center;align-items:center}
+.acctbox{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:var(--line-2)}
+.acctbox p{font-size:14px;color:var(--ink-2);margin:0 0 12px}
+.acctbox .who{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}
+.acctbox .who b{font:500 15px var(--font-display);display:block}
+.acctbox .who small{color:var(--muted);font-size:12.5px;display:block;direction:ltr;text-align:start}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--ink-2);margin-top:12px;cursor:pointer}
+.chk input{margin-top:3px;accent-color:var(--ink)}
+.hint{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.7}
+.hint--ok{color:var(--green)}
+.row2{display:flex;gap:8px;align-items:stretch}.row2 .inp{flex:1;min-width:0}
+.subh{font:500 17px var(--font-display);margin:8px 0 -4px}
+.badge{display:inline-block;font-size:12px;padding:1px 9px;border-radius:99px;border:1px solid var(--line);color:var(--ink-2);margin-inline-end:6px}
+.badge--ok{border-color:var(--green);color:var(--green)}
+.accpage{max-width:760px;margin-inline:auto;padding-block:8px 70px}
+.accpage h1{margin-bottom:6px}.accpage .lead{color:var(--ink-2);margin-bottom:24px;direction:ltr;text-align:start}
 .acct-sec h3{font-size:16px;margin-bottom:10px}
 .mini{display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center;padding:8px 0}
 .mini img{width:54px;height:54px;border-radius:10px;object-fit:cover}
@@ -1248,6 +1264,37 @@ const DICT = {
   'يُحدد عند التأكيد': 'Calculated at confirmation',
   'الإجمالي': 'Total',
   'إتمام الطلب': 'Checkout',
+  'حسابي': 'My account', 'تسجيل الدخول': 'Sign in', 'تسجيل الخروج': 'Sign out', 'خروج': 'Sign out', 'أهلًا بك': 'Welcome',
+  'إدارة بياناتي وعنواني': 'Manage my details and address', 'حفظ التغييرات': 'Save changes', 'طلباتي': 'My orders',
+  'الحسابات غير متاحة حاليًا': 'Accounts are not available right now', 'العودة للرئيسية': 'Back to home', 'جارٍ التحميل…': 'Loading…',
+  'ادخل بحساب جوجل لحفظ جوالك وعنوانك الوطني وتتبّع طلباتك. التسجيل مجاني، ويمكنك الطلب كضيف أيضًا.': 'Sign in with Google to save your phone and National Address and track your orders. It is free, and you can still order as a guest.',
+  'سجّل دخولك بحساب جوجل لحفظ جوالك وعنوانك الوطني وتتبّع طلباتك.': 'Sign in with Google to save your phone and National Address and track your orders.',
+  'لديك حساب؟ سجّل الدخول بجوجل لتعبئة بياناتك وعنوانك الوطني تلقائيًا، أو أكمل كضيف بالنموذج أدناه.': 'Have an account? Sign in with Google to fill in your details and National Address automatically, or continue as a guest below.',
+  'احفظ جوالي وعنواني لطلباتي القادمة': 'Save my phone and address for next time',
+  'أدخل بيانات التوصيل بالعنوان الوطني وسنجهّز طلبك.': 'Enter your delivery details using your National Address and we will prepare your order.',
+  'العنوان الوطني': 'National Address', 'العنوان المختصر (اختياري)': 'Short address (optional)', 'جلب العنوان': 'Look up address', 'جارٍ الجلب…': 'Looking up…',
+  '4 أحرف و4 أرقام، تجدها في تطبيق «العنوان الوطني» أو على لوحة المبنى.': '4 letters and 4 digits, found in the National Address app or on the building sign.',
+  'المدينة': 'City', 'الحي': 'District', 'الشارع': 'Street', 'رقم المبنى': 'Building number', 'الرمز البريدي': 'Postcode', 'الرقم الإضافي': 'Additional number',
+  'ملاحظات للتوصيل (اختياري)': 'Delivery notes (optional)', 'رقم الجوال': 'Mobile number',
+  'اكتب اسم المدينة.': 'Enter the city.', 'اكتب اسم الحي.': 'Enter the district.', 'اكتب اسم الشارع.': 'Enter the street.',
+  'رقم المبنى 4 أرقام.': 'Building number is 4 digits.', 'الرمز البريدي 5 أرقام.': 'Postcode is 5 digits.', 'الرقم الإضافي 4 أرقام.': 'Additional number is 4 digits.',
+  'العنوان المختصر 4 أحرف و4 أرقام، مثل RRRD2929.': 'Short address is 4 letters and 4 digits, like RRRD2929.',
+  'محاولات كثيرة، حاول بعد قليل.': 'Too many attempts, try again shortly.',
+  'تعذّر جلب العنوان الآن. أدخل الحقول يدويًا.': 'Could not look up the address now. Enter the fields manually.',
+  'جلب العنوان غير متاح حاليًا. أدخل الحقول يدويًا.': 'Address lookup is not available right now. Enter the fields manually.',
+  'لم نجد عنوانًا بهذا الرمز. تحقق منه أو أدخل الحقول يدويًا.': 'No address found for this code. Check it or enter the fields manually.',
+  'تم جلب العنوان من العنوان الوطني. راجع الحقول قبل التأكيد.': 'Address fetched from the National Address service. Review the fields before confirming.',
+  'تعذّر تسجيل الدخول. حاول مرة أخرى.': 'Could not sign in. Please try again.', 'تم تسجيل الخروج': 'Signed out',
+  'تعذّر تحميل تسجيل الدخول. حدّث الصفحة وحاول مجددًا.': 'Could not load sign-in. Refresh the page and try again.',
+  'انتهت الجلسة، سجّل الدخول من جديد.': 'Your session ended, please sign in again.',
+  'اكتب جوالًا سعوديًا صحيحًا، مثل 05XXXXXXXX.': 'Enter a valid Saudi mobile number, like 05XXXXXXXX.',
+  'تم حفظ بياناتك.': 'Your details were saved.', 'تعذّر الحفظ، حاول مرة أخرى.': 'Could not save, please try again.',
+  'موثّق': 'Verified', 'غير موثّق': 'Unverified', 'جديد': 'New', 'تم التأكيد': 'Confirmed', 'تم الشحن': 'Shipped', 'تم التسليم': 'Delivered', 'ملغي': 'Cancelled',
+  'استُخدم هذا الرقم في طلب لدينا.': 'This number was used in one of our orders.',
+  'يتوثّق تلقائيًا عند استخدامه في أول طلب لك.': 'Verified automatically when used in your first order.',
+  'أضف جوالك ليصلك تحديث الطلب. لا نرسل رمز تحقق.': 'Add your mobile to get order updates. We do not send a verification code.',
+  'لا توجد طلبات مرتبطة بحسابك بعد.': 'No orders linked to your account yet.', 'العنوان المختصر': 'Short address',
+  'عند تسجيل الدخول بحساب جوجل نحفظ اسمك وبريدك، ونحفظ جوالك وعنوانك الوطني إن اخترت ذلك، لتسهيل طلباتك القادمة. لا نصل إلى كلمة مرور جوجل، ويمكنك تسجيل الخروج في أي وقت.': 'When you sign in with Google we store your name and email, and your mobile and National Address if you choose to, to make future orders easier. We never see your Google password, and you can sign out at any time.',
   'متابعة التسوق': 'Continue shopping',
   'مبروك!': 'Congratulations!',
   'توصيل طلبك مجاني.': 'Your delivery is free.',
@@ -1428,7 +1475,8 @@ const RULES = [
   [/^لا توجد نتائج لـ «([\s\S]*)»\. جرّب كلمة أخرى\.$/, 'No results for “$1”. Try another word.'],
   [/^([−-]?\s*[\d,]+(?:\.\d+)?) ريال$/, '$1 SAR'],
   [/^المفضلة \((\d+)\)$/, 'Wishlist ($1)'],
-  [/^متابعة إلى الدفع · ([\d,.]+) ريال$/, 'Continue to payment · $1 SAR']
+  [/^متابعة إلى الدفع · ([\d,.]+) ريال$/, 'Continue to payment · $1 SAR'],
+  [/^أهلًا (.+)$/, 'Welcome, $1']
 ];
 const ARB = /[؀-ۿ]/;
 function trStr(s) {
@@ -1560,6 +1608,8 @@ async function loadCatalog() {
   const d = await apiCall('catalog');
   if (!d || !d.items) return;
   PAY_ON = !!d.pay;
+  GID = typeof d.gid === 'string' ? d.gid : ''; ADDR_LOOKUP = !!d.addr_lookup;
+  if (GID && !S.userLoaded) loadMe();
   if (d.freeFrom >= 0) CONFIG.freeFrom = d.freeFrom;
   (d.extra || []).forEach(e => {
     if (AR0.P.some(x => x.id === e.id)) return;
@@ -1826,6 +1876,7 @@ document.addEventListener('pointermove', e => { const f = e.target.closest && e.
 
 /* ===================== الدفع الإلكتروني (Stream) ===================== */
 let PAY_ON = false;
+let GID = '', ADDR_LOOKUP = false;
 function loadPending() {
   const x = store.get('mirwaf.pending', null);
   if (!x || typeof x !== 'object' || !x.ref || !Array.isArray(x.items) || !x.c) return null;
@@ -2034,13 +2085,163 @@ function vPost() {
     <div class="grid grid--3">${a.related.filter(byId).map(id => card(byId(id))).join('')}</div></div></section>`;
 }
 
+/* ----- الحساب (جوجل + جوال) والعنوان الوطني ----- */
+const SHIP_KEYS = ['city', 'district', 'street', 'bno', 'post', 'extra', 'short'];
+const ST_AR = { new: 'جديد', confirmed: 'تم التأكيد', shipped: 'تم الشحن', done: 'تم التسليم', cancelled: 'ملغي' };
+const digA = s => String(s == null ? '' : s).replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, c => c.charCodeAt(0) - 0x6F0);
+const normShortC = s => digA(s).toUpperCase().replace(/[\s-]/g, '');
+const addrLineC = c => `${c.street}، حي ${c.district}، مبنى ${c.bno}، ${c.city} ${c.post}-${c.extra}` + (c.short ? ` (العنوان المختصر ${c.short})` : '');
+async function loadMe() {
+  S.userLoaded = true;
+  const r = await apiCall('account/me');
+  S.user = r && r.ok && r.user ? r.user : null;
+  afterAuth(false);
+}
+function afterAuth(announce) {
+  if (S.open === 'acct') renderAcct();
+  if (S.r && S.r.v === 'checkout') { const b = $('#coAcct'); if (b) b.innerHTML = coAcctHTML(); prefillCheckout(); mountG(); }
+  else if (S.r && S.r.v === 'account') render(true);
+  if (announce && S.user) toast('أهلًا ' + ((S.user.name || '').split(' ')[0] || 'بك'));
+}
+let gsiP = null, gsiReady = false;
+function loadGsi() {
+  if (window.google && window.google.accounts && window.google.accounts.id) return Promise.resolve(window.google);
+  if (gsiP) return gsiP;
+  gsiP = new Promise((res, rej) => {
+    const el = document.createElement('script'); el.src = 'https://accounts.google.com/gsi/client'; el.async = true;
+    el.onload = () => res(window.google); el.onerror = () => { gsiP = null; rej(new Error('gsi')); };
+    document.head.appendChild(el);
+  });
+  return gsiP;
+}
+async function onGoogle(resp) {
+  const r = resp && resp.credential ? await apiCall('account/google', { credential: resp.credential }) : null;
+  if (r && r.ok && r.user) { S.user = r.user; S.userLoaded = true; afterAuth(true); }
+  else toast(r && r.error === 'rate' ? 'محاولات كثيرة، حاول بعد قليل.' : 'تعذّر تسجيل الدخول. حاول مرة أخرى.');
+}
+async function mountG() {
+  if (!GID || S.user) return;
+  const hosts = $$('[data-gbtn]'); if (!hosts.length) return;
+  try {
+    const g = await loadGsi();
+    if (!gsiReady) { g.accounts.id.initialize({ client_id: GID, callback: onGoogle, ux_mode: 'popup', auto_select: false, itp_support: true }); gsiReady = true; }
+    $$('[data-gbtn]').forEach(h => { if (!h.firstChild) g.accounts.id.renderButton(h, { type: 'standard', theme: 'outline', size: 'large', text: 'continue_with', shape: 'pill', locale: isEn() ? 'en' : 'ar', width: 280 }); });
+  } catch (e) { hosts.forEach(h => { if (!h.firstChild) h.innerHTML = '<small class="hint">تعذّر تحميل تسجيل الدخول. حدّث الصفحة وحاول مجددًا.</small>'; }); }
+}
+async function doLogout() {
+  await apiCall('account/logout', {});
+  S.user = null; S.myOrders = null;
+  try { if (window.google && window.google.accounts) window.google.accounts.id.disableAutoSelect(); } catch (e) { }
+  if (S.r && S.r.v === 'account') go('home'); else afterAuth(false);
+  if (S.r && S.r.v === 'checkout') render(true);
+  toast('تم تسجيل الخروج');
+}
+function shipDefaults() {
+  const g = store.get('mirwaf.ship', {}) || {}, u = S.user || {}, a = u.addr || null, o = { name: u.name || g.name || '', phone: u.phone ? '0' + String(u.phone).replace(/^966/, '') : (g.phone || '') };
+  SHIP_KEYS.forEach(k => { o[k] = String((a ? a[k] : g[k]) || ''); });
+  return o;
+}
+function addrFieldsHTML(p) {
+  const f = (k, label, extra, full) => `<div class="fld ${full ? 'full' : ''}"><label for="${p}-${k}">${label}</label><input class="inp" id="${p}-${k}" ${extra}><div class="err" id="${p}-${k}-e"></div></div>`;
+  return `<div class="full subh">العنوان الوطني</div>
+    <div class="fld full"><label for="${p}-short">العنوان المختصر (اختياري)</label>
+      <div class="row2"><input class="inp" id="${p}-short" maxlength="9" dir="ltr" data-end autocapitalize="characters" autocomplete="off" placeholder="RRRD2929">${ADDR_LOOKUP ? `<button class="btn btn--line btn--sm" type="button" data-act="addr-lookup" data-p="${p}" id="${p}-lk">جلب العنوان</button>` : ''}</div>
+      <div class="err" id="${p}-short-e"></div><div class="hint" id="${p}-short-h">4 أحرف و4 أرقام، تجدها في تطبيق «العنوان الوطني» أو على لوحة المبنى.</div></div>
+    ${f('city', 'المدينة', 'autocomplete="address-level2" maxlength="60"')}
+    ${f('district', 'الحي', 'maxlength="60"')}
+    ${f('street', 'الشارع', 'autocomplete="address-line1" maxlength="80"', true)}
+    ${f('bno', 'رقم المبنى', 'inputmode="numeric" maxlength="4" dir="ltr" data-end placeholder="0000"')}
+    ${f('post', 'الرمز البريدي', 'inputmode="numeric" maxlength="5" autocomplete="postal-code" dir="ltr" data-end placeholder="00000"')}
+    ${f('extra', 'الرقم الإضافي', 'inputmode="numeric" maxlength="4" dir="ltr" data-end placeholder="0000"')}`;
+}
+function fillAddr(p, v, force) { SHIP_KEYS.forEach(k => { const el = $('#' + p + '-' + k); if (el && v && v[k] && (force || !el.value)) el.value = v[k]; }); }
+function readAddr(p) {
+  const g = (k, n) => clean(($('#' + p + '-' + k) || {}).value || '', n);
+  const o = { city: g('city', 60), district: g('district', 60), street: g('street', 80), bno: digA(g('bno', 8)).replace(/\s/g, ''), post: digA(g('post', 8)).replace(/\s/g, ''), extra: digA(g('extra', 8)).replace(/\s/g, ''), short: normShortC(g('short', 20)) };
+  return o;
+}
+const addrRules = (p, o) => [
+  [p + '-city', o.city.length >= 2, 'اكتب اسم المدينة.'], [p + '-district', o.district.length >= 2, 'اكتب اسم الحي.'], [p + '-street', o.street.length >= 2, 'اكتب اسم الشارع.'],
+  [p + '-bno', /^\d{4}$/.test(o.bno), 'رقم المبنى 4 أرقام.'], [p + '-post', /^\d{5}$/.test(o.post), 'الرمز البريدي 5 أرقام.'], [p + '-extra', /^\d{4}$/.test(o.extra), 'الرقم الإضافي 4 أرقام.'],
+  [p + '-short', !o.short || /^[A-Z]{4}\d{4}$/.test(o.short), 'العنوان المختصر 4 أحرف و4 أرقام، مثل RRRD2929.']
+];
+function showRules(rules) {
+  let bad = null;
+  rules.forEach(([id, ok, msg]) => { const el = $('#' + id), er = $('#' + id + '-e'); if (!el || !er) return; if (ok) { el.removeAttribute('aria-invalid'); er.textContent = ''; } else { el.setAttribute('aria-invalid', 'true'); er.textContent = msg; if (!bad) bad = el; } });
+  if (bad) bad.focus();
+  return !bad;
+}
+async function addrLookup(p) {
+  const el = $('#' + p + '-short'), er = $('#' + p + '-short-e'), h = $('#' + p + '-short-h'), btn = $('#' + p + '-lk');
+  const n = normShortC(el.value); el.value = n;
+  er.textContent = ''; h.classList.remove('hint--ok');
+  if (!/^[A-Z]{4}\d{4}$/.test(n)) { el.setAttribute('aria-invalid', 'true'); er.textContent = 'العنوان المختصر 4 أحرف و4 أرقام، مثل RRRD2929.'; el.focus(); return; }
+  el.removeAttribute('aria-invalid');
+  if (btn) { btn.disabled = true; btn.textContent = 'جارٍ الجلب…'; }
+  const r = await apiCall('address/lookup', { short: n });
+  if (btn) { btn.disabled = false; btn.textContent = 'جلب العنوان'; }
+  if (!r || !r.ok) { er.textContent = r && r.error === 'rate' ? 'محاولات كثيرة، حاول بعد قليل.' : 'تعذّر جلب العنوان الآن. أدخل الحقول يدويًا.'; return; }
+  if (r.enabled === false) { er.textContent = 'جلب العنوان غير متاح حاليًا. أدخل الحقول يدويًا.'; return; }
+  if (!r.found) { er.textContent = 'لم نجد عنوانًا بهذا الرمز. تحقق منه أو أدخل الحقول يدويًا.'; return; }
+  fillAddr(p, r.a, true);
+  h.textContent = 'تم جلب العنوان من العنوان الوطني. راجع الحقول قبل التأكيد.'; h.classList.add('hint--ok');
+}
+function acctTopHTML() {
+  if (!GID) return '';
+  if (S.user) return `<div class="acct-sec"><h3>حسابي</h3><div class="acctbox"><div class="who"><div><b>${esc(S.user.name || 'عميل لوتشي')}</b><small>${esc(S.user.email)}</small></div><button class="btn btn--line btn--sm" type="button" data-act="g-logout">خروج</button></div></div><p style="margin-top:12px"><a class="btn btn--sm" href="#account" data-nav>إدارة بياناتي وعنواني</a></p></div>`;
+  return `<div class="acct-sec"><h3>تسجيل الدخول</h3><p style="color:var(--ink-2);font-size:14.5px;margin-bottom:12px">ادخل بحساب جوجل لحفظ جوالك وعنوانك الوطني وتتبّع طلباتك. التسجيل مجاني، ويمكنك الطلب كضيف أيضًا.</p><div class="gbtn" data-gbtn data-notr></div></div>`;
+}
+function coAcctHTML() {
+  if (!GID) return '';
+  if (S.user) return `<div class="acctbox"><div class="who"><div><b>أهلًا ${esc((S.user.name || '').split(' ')[0] || 'بك')}</b><small>${esc(S.user.email)}</small></div><button class="btn btn--line btn--sm" type="button" data-act="g-logout">خروج</button></div><label class="chk"><input type="checkbox" id="f-save" checked> احفظ جوالي وعنواني لطلباتي القادمة</label></div>`;
+  return `<div class="acctbox"><p>لديك حساب؟ سجّل الدخول بجوجل لتعبئة بياناتك وعنوانك الوطني تلقائيًا، أو أكمل كضيف بالنموذج أدناه.</p><div class="gbtn" data-gbtn data-notr></div></div>`;
+}
+function prefillCheckout() {
+  const d = shipDefaults(), n = $('#f-name'), ph = $('#f-phone');
+  if (n && !n.value && d.name) n.value = d.name;
+  if (ph && !ph.value && d.phone) ph.value = d.phone;
+  fillAddr('f', d, false);
+}
+function vAccount() {
+  if (!GID) return `<div class="wrap"><div class="empty" style="padding-block:90px">${ico('user', 48)}<b style="font:500 20px var(--font-display)">الحسابات غير متاحة حاليًا</b><a class="btn" href="#home" data-nav>العودة للرئيسية</a></div></div>`;
+  const crumbs = `<nav class="crumbs" aria-label="مسار التنقل"><a href="#home" data-nav>الرئيسية</a><span>/</span><span aria-current="page">حسابي</span></nav>`;
+  if (!S.userLoaded) return `<div class="wrap accpage">${crumbs}<h1>حسابي</h1><p class="lead" style="direction:rtl">جارٍ التحميل…</p></div>`;
+  if (!S.user) return `<div class="wrap accpage">${crumbs}<h1>حسابي</h1><p class="lead" style="direction:rtl">سجّل دخولك بحساب جوجل لحفظ جوالك وعنوانك الوطني وتتبّع طلباتك.</p><div class="gbtn" data-gbtn data-notr></div></div>`;
+  const u = S.user;
+  return `<div class="wrap accpage">${crumbs}<h1>حسابي</h1><p class="lead">${esc(u.email)}</p>
+    <form id="acctForm" novalidate><div class="fields">
+      <div class="fld full"><label for="a-name">الاسم الكامل</label><input class="inp" id="a-name" autocomplete="name" maxlength="80"><div class="err" id="a-name-e"></div></div>
+      <div class="fld full"><label for="a-phone">رقم الجوال</label><input class="inp" id="a-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" dir="ltr" data-end placeholder="05XXXXXXXX"><div class="err" id="a-phone-e"></div>
+        <div class="hint" id="a-phone-h">${phoneHint(u)}</div></div>
+      ${addrFieldsHTML('a')}
+    </div>
+    <div class="msg" id="acctMsg" role="status"></div>
+    <button class="btn" type="submit" style="margin-top:14px">حفظ التغييرات</button></form>
+    <div class="acct-sec" style="margin-top:34px;border:0"><h3>طلباتي</h3><div id="myOrders"><p style="color:var(--ink-2);font-size:14.5px">جارٍ التحميل…</p></div></div>
+    <p style="margin-top:10px"><button class="btn btn--line btn--sm" type="button" data-act="g-logout">تسجيل الخروج</button></p></div>`;
+}
+const phoneHint = u => !u.phone ? 'أضف جوالك ليصلك تحديث الطلب. لا نرسل رمز تحقق.' : u.phoneVerified ? '<span class="badge badge--ok">موثّق</span>استُخدم هذا الرقم في طلب لدينا.' : '<span class="badge">غير موثّق</span>يتوثّق تلقائيًا عند استخدامه في أول طلب لك.';
+function accountMounted() {
+  const u = S.user; if (!u) return;
+  const set = (id, v) => { const el = $('#' + id); if (el) el.value = v || ''; };
+  set('a-name', u.name); set('a-phone', u.phone ? '0' + String(u.phone).replace(/^966/, '') : '');
+  fillAddr('a', u.addr || {}, true);
+  apiCall('account/orders').then(r => {
+    const box = $('#myOrders'); if (!box) return;
+    box.innerHTML = r && r.ok && r.orders.length
+      ? r.orders.map(o => `<div class="mini" style="grid-template-columns:1fr auto"><div><b dir="ltr" data-end>${esc(o.ref)}</b><small class="num">${o.count} ${o.count === 1 ? 'منتج' : 'منتجات'} · ${esc(ST_AR[o.status] || o.status)} · ${new Date(o.at).toLocaleDateString(isEn() ? 'en-GB' : 'ar-SA-u-ca-gregory-nu-latn')}</small></div><b class="num" style="font:600 14px var(--font-display)">${fmt(o.total)} ريال</b></div>`).join('')
+      : '<p style="color:var(--ink-2);font-size:14.5px">لا توجد طلبات مرتبطة بحسابك بعد.</p>';
+    if (isEn()) trTree(box);
+  });
+}
+
 /* ----- الدفع ----- */
 function orderText(o) {
   let when = '';
   try { when = new Date(o.at).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { dateStyle: 'medium', timeStyle: 'short' }); } catch (e) { when = new Date(o.at).toISOString().slice(0, 16).replace('T', ' '); }
   const L = o.items.map((i, n) => `${n + 1}. ${i.name}${i.v ? ' (' + i.v + ')' : ''}\n    ${i.qty} × ${fmt(i.price)} = ${fmt(i.price * i.qty)} ريال`);
   return ['🛒 طلب جديد من متجر لوتشي', `رقم الطلب: ${o.ref}`, `التاريخ: ${when}`, '',
-    '👤 بيانات العميل', `الاسم: ${o.c.name}`, `الجوال: ${o.c.phone}`, `المدينة: ${o.c.city}`, `العنوان: ${o.c.addr}`, o.c.notes ? `ملاحظات: ${o.c.notes}` : null, '',
+    '👤 بيانات العميل', `الاسم: ${o.c.name}`, `الجوال: ${o.c.phone}`, `المدينة: ${o.c.city}`, `العنوان: ${o.c.addr}`, o.c.short ? `العنوان المختصر: ${o.c.short}` : null, o.c.notes ? `ملاحظات: ${o.c.notes}` : null, '',
     '☕ المنتجات', ...L, '',
     o.pay ? `💳 الدفع الإلكتروني: ${o.pay.status === 'paid' ? (o.pay.ok ? 'تم الدفع (تم التحقق)' : 'تم الدفع (بانتظار تأكيد التاجر)') : 'غير مكتمل'} · رقم العملية ${o.pay.id}` : null, '',
     '💰 الملخص', `المجموع الفرعي: ${fmt(o.sub)} ريال`, o.d ? `خصم الكود ${o.coupon || CONFIG.code} (${o.pct || CONFIG.pct}%): -${fmt(o.d)} ريال` : null, `التوصيل: ${o.free ? 'مجاني' : 'يُحدد عند التأكيد'}`, `الإجمالي: ${fmt(o.total)} ريال`
@@ -2062,13 +2263,13 @@ function vCheckout() {
     <div class="co">
       <form id="coForm" novalidate>
         <input id="f-site" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;inset-inline-start:-9999px;width:1px;height:1px;opacity:0">
-        <h1>إتمام الطلب</h1><p class="lead">أدخل بيانات التوصيل وسنجهّز طلبك.</p>
+        <h1>إتمام الطلب</h1><p class="lead">أدخل بيانات التوصيل بالعنوان الوطني وسنجهّز طلبك.</p>
         <div class="fields">
+          <div class="fld full" id="coAcct" style="margin-bottom:-2px">${coAcctHTML()}</div>
           ${fld('f-name', 'الاسم الكامل', 'autocomplete="name" maxlength="80" required', true)}
-          ${fld('f-phone', 'رقم الجوال', 'type="tel" inputmode="tel" autocomplete="tel" maxlength="20" dir="ltr" data-end placeholder="05XXXXXXXX" required')}
-          ${fld('f-city', 'المدينة', 'autocomplete="address-level2" maxlength="60" required')}
-          ${fld('f-addr', 'الحي والعنوان', 'autocomplete="street-address" maxlength="200" required', true)}
-          ${fld('f-notes', 'ملاحظات للطلب (اختياري)', 'rows="3" maxlength="500"', true, 'textarea')}
+          ${fld('f-phone', 'رقم الجوال', 'type="tel" inputmode="tel" autocomplete="tel" maxlength="20" dir="ltr" data-end placeholder="05XXXXXXXX" required', true)}
+          ${addrFieldsHTML('f')}
+          ${fld('f-notes', 'ملاحظات للتوصيل (اختياري)', 'rows="3" maxlength="500"', true, 'textarea')}
         </div>
         <fieldset class="paym" style="border:0;padding:0;margin-inline:0;min-width:0"><legend><h2>طريقة الدفع</h2></legend>
           <label class="pmo"><input type="radio" name="pm" value="card" ${PAY_ON ? 'checked' : 'disabled'}><div><b>ادفع الآن إلكترونيًا</b><span>${PAY_ON ? 'مدى · فيزا · ماستركارد' : 'الدفع الإلكتروني يُفعَّل قريبًا'}</span></div></label>
@@ -2103,6 +2304,7 @@ function vPolicies() {
     <h2>الاسترجاع والاستبدال</h2><p>وفق نظام التجارة الإلكترونية في المملكة، يمكنك طلب الإرجاع خلال 7 أيام من الاستلام للمنتجات غير المستخدمة في عبوتها الأصلية. يُستثنى من ذلك البن بعد فتح العبوة. للاستبدال أو الإرجاع تواصل معنا عبر واتساب.</p>
     <h2>الدفع</h2><p>نقبل مدى وفيزا وماستركارد عبر بوابة Stream عند تفعيل الدفع الإلكتروني، أو يمكنك إتمام الطلب عبر واتساب. جميع الأسعار بالريال السعودي.</p>
     <h2>الخصوصية</h2><p>نجمع الاسم والجوال والعنوان فقط لتجهيز طلبك وتوصيله. لا نبيع بياناتك ولا نشاركها مع أحد غير شركة التوصيل وبوابة الدفع. بيانات البطاقة تُعالج لدى بوابة الدفع ولا تصل إلينا.</p>
+    <p>عند تسجيل الدخول بحساب جوجل نحفظ اسمك وبريدك، ونحفظ جوالك وعنوانك الوطني إن اخترت ذلك، لتسهيل طلباتك القادمة. لا نصل إلى كلمة مرور جوجل، ويمكنك تسجيل الخروج في أي وقت.</p>
   </div></div>`;
 }
 function vDone() {
@@ -2139,6 +2341,7 @@ function parse(tok) {
   if (tok === 'done') return { v: 'done' };
   if (tok === 'pay') return { v: 'pay' };
   if (tok === 'policies') return { v: 'policies' };
+  if (tok === 'account') return { v: 'account' };
   return { v: 'home' };
 }
 function route(tok) {
@@ -2164,11 +2367,15 @@ function render(keepScroll) {
   else if (r.v === 'post') { h = vPost(); title = POSTS.find(a => a.id === r.id).title + ' | ' + SITE; }
   else if (r.v === 'checkout') { h = vCheckout(); title = tt('إتمام الطلب') + ' | ' + SITE; }
   else if (r.v === 'pay') { if (!S.last) S.last = loadPending(); h = vPay(); title = tt('الدفع الآمن') + ' | ' + SITE; }
+  else if (r.v === 'account') { h = vAccount(); title = tt('حسابي') + ' | ' + SITE; }
   else if (r.v === 'policies') { h = vPolicies(); title = tt('سياسات المتجر') + ' | ' + SITE; }
   else if (r.v === 'done') { h = vDone(); title = tt('تم تجهيز طلبك') + ' | ' + SITE; }
   view.innerHTML = h;
   if (r.v === 'pdp') pdpSync();
   if (r.v === 'pay') mountPay();
+  if (r.v === 'checkout') prefillCheckout();
+  if (r.v === 'account') accountMounted();
+  mountG();
   if (r.v === 'home') holoInit(); else HP.on = false;
   revealInit();
   if (!keepScroll) { view.classList.remove('view'); void view.offsetWidth; view.classList.add('view'); }
@@ -2220,9 +2427,10 @@ function renderMenu() {
 function miniRow(p) {
   return `<a class="mini" href="#p-${p.id}" data-nav><img src="${IMGS(p.img)}" alt="" width="54" height="54"><div><b>${esc(p.name)}</b><small>${esc(p.brand)}</small></div><b class="num" style="font:600 14px var(--font-display)">${fmt(p.price)} ريال</b></a>`;
 }
-function renderAcct() {
+function renderAcct() { renderAcct0(); mountG(); }
+function renderAcct0() {
   const w = S.wish.map(byId).filter(Boolean);
-  $('#acctB').innerHTML = `
+  $('#acctB').innerHTML = `${acctTopHTML()}
     <div class="acct-sec"><h3>المفضلة <span class="num" style="color:var(--muted);font-weight:400">(${w.length})</span></h3>
       ${w.length ? w.map(miniRow).join('') : '<p style="color:var(--ink-2);font-size:14.5px">لم تضف منتجات للمفضلة بعد. اضغط على القلب في أي منتج لحفظه هنا.</p>'}</div>
     <div class="acct-sec" style="border:0"><h3>طلباتي على هذا الجهاز</h3>
@@ -2338,6 +2546,8 @@ document.addEventListener('click', e => {
     case 'close-lb': closeLb(); break;
     case 'lang': setLang(d.l); break;
     case 'copy-order': copy(orderText(S.last), 'تم نسخ ملخص الطلب'); break;
+    case 'g-logout': doLogout(); break;
+    case 'addr-lookup': addrLookup(d.p || 'f'); break;
   }
 });
 function closeLb() { $('#lb').classList.remove('open'); $('#lb').setAttribute('aria-hidden', 'true'); }
@@ -2351,19 +2561,34 @@ document.addEventListener('input', e => {
 document.addEventListener('submit', async e => {
   const f = e.target;
   if (f.id === 'cpnForm') { e.preventDefault(); applyCoupon($('#cpnIn').value); return; }
+  if (f.id === 'acctForm') {
+    e.preventDefault();
+    const nm = clean($('#a-name').value, 80), ph = digA($('#a-phone').value).replace(/[\s-]/g, ''), ad = readAddr('a'), any = ['city', 'district', 'street', 'bno', 'post', 'extra', 'short'].some(k => ad[k]);
+    const msg = $('#acctMsg'); msg.className = 'msg'; msg.textContent = '';
+    if (!showRules([['a-name', nm.length >= 3, 'اكتب اسمك الكامل.'], ['a-phone', !ph || /^\+?\d{9,15}$/.test(ph), 'اكتب رقم جوال صحيح، مثل 05XXXXXXXX.'], ...(any ? addrRules('a', ad) : [])])) return;
+    const btn = f.querySelector('button[type=submit]'); btn.disabled = true;
+    const r = await apiCall('account/profile', { name: nm, phone: ph, addr: any ? ad : null });
+    btn.disabled = false;
+    if (r && r.ok) { S.user = r.user; msg.className = 'msg msg--ok'; msg.textContent = 'تم حفظ بياناتك.'; const h = $('#a-phone-h'); if (h) h.innerHTML = phoneHint(r.user); if (isEn()) trTree(f); }
+    else if (r && r.error === 'phone') { const el = $('#a-phone'); el.setAttribute('aria-invalid', 'true'); $('#a-phone-e').textContent = 'اكتب جوالًا سعوديًا صحيحًا، مثل 05XXXXXXXX.'; el.focus(); }
+    else if (r && r.error === 'auth') { S.user = null; afterAuth(false); toast('انتهت الجلسة، سجّل الدخول من جديد.'); }
+    else { msg.className = 'msg msg--err'; msg.textContent = 'تعذّر الحفظ، حاول مرة أخرى.'; }
+    return;
+  }
   if (f.id === 'coForm') {
     e.preventDefault();
     const v = id => $('#' + id).value.trim();
     const cv = (id, n, nl) => clean($('#' + id).value, n, nl);
     const dig = s => s.replace(/[\u0660-\u0669]/g, c => c.charCodeAt(0) - 0x660).replace(/[\u06F0-\u06F9]/g, c => c.charCodeAt(0) - 0x6F0);
-    const rules = [['f-name', v('f-name').length >= 3, 'اكتب اسمك الكامل.'], ['f-phone', /^\+?\d{9,15}$/.test(dig(v('f-phone')).replace(/[\s-]/g, '')), 'اكتب رقم جوال صحيح، مثل 05XXXXXXXX.'], ['f-city', v('f-city').length >= 2, 'اكتب اسم المدينة.'], ['f-addr', v('f-addr').length >= 4, 'اكتب الحي والعنوان بشكل أوضح.']];
+    const ad = readAddr('f');
+    const rules = [['f-name', v('f-name').length >= 3, 'اكتب اسمك الكامل.'], ['f-phone', /^\+?\d{9,15}$/.test(dig(v('f-phone')).replace(/[\s-]/g, '')), 'اكتب رقم جوال صحيح، مثل 05XXXXXXXX.'], ...addrRules('f', ad)];
     let bad = null;
     rules.forEach(([id, ok, msg]) => { const el = $('#' + id), er = $('#' + id + '-e'); if (ok) { el.removeAttribute('aria-invalid'); er.textContent = ''; } else { el.setAttribute('aria-invalid', 'true'); er.textContent = msg; if (!bad) bad = el; } });
     if (bad) { bad.focus(); return; }
     const t = totals();
     const o = {
       ref: 'MW-' + new Date().toISOString().slice(2, 10).replace(/-/g, '') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), at: Date.now(),
-      c: { name: cv('f-name', 80), phone: dig(cv('f-phone', 20)), city: cv('f-city', 60), addr: cv('f-addr', 200), notes: cv('f-notes', 500, true) },
+      c: { name: cv('f-name', 80), phone: dig(cv('f-phone', 20)), ...ad, addr: addrLineC(ad), notes: cv('f-notes', 500, true) },
       items: t.lines.map(l => ({ id: l.id, name: (AR0.P.find(x => x.id === l.id) || l.p).name, v: l.v, qty: l.qty, price: l.p.price })), count: t.count, sub: t.sub, d: t.d, free: t.free, total: t.total
     };
     const pm = (document.querySelector('input[name="pm"]:checked') || {}).value;
@@ -2377,6 +2602,11 @@ document.addEventListener('submit', async e => {
     if (sr && sr.ok) { Object.assign(o, { ref: sr.ref, at: sr.at, sub: sr.sub, d: sr.d, free: sr.free, total: sr.total, pct: sr.pct, coupon: sr.coupon }); S.cid = ''; }
     else if (sr) { rst(); toast(sr.error === 'stock' ? 'نفدت كمية أحد المنتجات. راجع سلتك بعد تحديث الأسعار والمخزون.' : sr.error === 'rate' || sr.error === 'busy' ? 'محاولات كثيرة، حاول بعد قليل.' : 'تعذّر إرسال الطلب، تحقق من البيانات وحاول مرة أخرى.'); if (sr.error === 'stock') loadCatalog(); return; }
     else if (o.method === 'card') { rst(); toast('تعذّر الاتصال بالخادم. اختر الطلب عبر واتساب أو حاول لاحقًا.'); return; }
+    {
+      const sv = { name: o.c.name, phone: o.c.phone }; SHIP_KEYS.forEach(k => { sv[k] = o.c[k]; }); store.set('mirwaf.ship', sv);
+      const keep = !($('#f-save') && !$('#f-save').checked);
+      if (S.user && keep && sr && sr.ok) apiCall('account/profile', { name: o.c.name, phone: o.c.phone, addr: ad }).then(r2 => { if (r2 && r2.ok) S.user = r2.user; });
+    }
     S.orders.unshift({ ref: o.ref, at: o.at, count: o.count, total: o.total }); store.set('mirwaf.orders', S.orders.slice(0, 20)); S.last = o;
     S.cart = []; saveCart(); updateBadge();
     if (o.method === 'card') { store.set('mirwaf.pending', o); go('pay'); return; }

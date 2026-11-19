@@ -2,6 +2,9 @@
 import { J, clean, dig, ipHash, sameOrigin, readJson } from '../_lib/util.js';
 import { init, effectiveCatalog, findCoupon, getFreeFrom, getSetting, setSetting } from '../_lib/db.js';
 import { streamOn, createProduct, findProductByName, createPaymentLink, getInvoice, verifyWebhook } from '../_lib/stream.js';
+import { accountRoute, addressLookupRoute, accountsOn, currentAccount, markPhoneUsed } from '../_lib/accounts.js';
+import { validateAddress, addrLine, lookupShort } from '../_lib/address.js';
+import { adminRoute, publicStoreSettings } from '../_lib/admin_api.js';
 import { isAdmin, adminEnabled, makeCookie, clearCookie, loginAttempt, revokeSessions } from '../_lib/auth.js';
 
 const STATUSES = ['new', 'confirmed', 'shipped', 'done', 'cancelled'];
@@ -24,11 +27,16 @@ export async function onRequest(context) {
 
     // ---------- عامّ ----------
     if (a === 'catalog' && m === 'GET') return catalog(env);
+    if (a === 'store-settings' && m === 'GET') return publicStoreSettings(env);
     if (a === 'coupon' && m === 'POST') return couponCheck(request, env);
     if (a === 'orders' && m === 'POST') return createOrder(context);
     if (a === 'pay' && b === 'verify' && m === 'POST') return payVerify(request, env);
     if (a === 'pay' && b === 'start' && m === 'POST') return payStart(request, env);
     if (a === 'pay' && b === 'webhook' && m === 'POST') return payWebhook(request, env);
+
+    // ---------- حسابات العملاء والعنوان الوطني (functions/_lib/accounts.js, address.js) ----------
+    if (a === 'account') return accountRoute(context, path);
+    if (a === 'address' && b === 'lookup' && m === 'POST') return addressLookupRoute(request, env);
 
     // ---------- أدمن ----------
     if (a === 'admin') {
@@ -43,6 +51,7 @@ export async function onRequest(context) {
         if (origin) { try { originOk = new URL(origin).host === new URL(request.url).host; } catch (e) { originOk = false; } }
         if (!originOk || request.headers.get('x-mw') !== '1') return J({ ok: false, error: 'csrf' }, 403);
       }
+      { const r = await adminRoute(request, env, path); if (r) return r; } // لوحة التحكم الموسّعة (admin_api.js)
       if (b === 'me' && m === 'GET') return J({ ok: true });
       if (b === 'logout' && m === 'POST') { await revokeSessions(env); return J({ ok: true }, 200, { 'set-cookie': clearCookie() }); }
       if (b === 'summary' && m === 'GET') return summary(env);
@@ -75,7 +84,7 @@ async function catalog(env) {
     items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden };
     if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, short: e.short || '', desc: e.desc || '' }); }
   }
-  return J({ ok: true, pay: streamOn(env), freeFrom: await getFreeFrom(env), items, extra }, 200, { 'cache-control': 'public, max-age=30' });
+  return J({ ok: true, pay: streamOn(env) && (await getSetting(env, 'pay_card_on', '1')) !== '0', freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: !!env.SPL_API_KEY }, 200, { 'cache-control': 'public, max-age=30' });
 }
 
 async function couponCheck(request, env) {
@@ -91,13 +100,22 @@ async function createOrder({ request, env, waitUntil }) {
   const b = await readJson(request, 12000);
   if (!b || !b.c || typeof b.c !== 'object' || !Array.isArray(b.items)) return J({ ok: false, error: 'invalid' }, 400);
 
-  const name = clean(b.c.name, 80), phone = dig(clean(b.c.phone, 20)), city = clean(b.c.city, 60), address = clean(b.c.addr, 200), notes = clean(b.c.notes, 500, true);
-  if (name.length < 3 || city.length < 2 || address.length < 4 || !/^\+?\d{9,15}$/.test(phone.replace(/[\s-]/g, ''))) return J({ ok: false, error: 'invalid' }, 400);
+  const name = clean(b.c.name, 80), phone = dig(clean(b.c.phone, 20)), notes = clean(b.c.notes, 500, true);
+  let av = validateAddress(b.c); // العنوان الوطني: مبنى 4 + بريدي 5 + إضافي 4 + حي + شارع + مدينة
+  // توافق مؤقت: صفحات المتجر القديمة المخزّنة عند الزبائن ترسل عنوانًا نصيًا فقط، فنقبله (بدون حقول وطنية) بدل رفض الطلب.
+  const legacyAddr = clean(b.c.addr, 200), legacyCity = clean(b.c.city, 60);
+  const noStructured = !['district', 'street', 'bno', 'post', 'extra', 'short'].some(k => String(b.c[k] || '').trim());
+  if (!av.ok && noStructured && legacyAddr.length >= 4 && legacyCity.length >= 2) av = { ok: true, a: { city: legacyCity, district: '', street: '', bno: '', post: '', extra: '', short: '' }, legacy: legacyAddr };
+  if (name.length < 3 || !av.ok || !/^\+?\d{9,15}$/.test(phone.replace(/[\s-]/g, ''))) return J({ ok: false, error: 'invalid', field: av.ok ? '' : av.field }, 400);
+  const na = av.a, city = na.city, address = av.legacy || addrLine(na);
   const cid = String(b.cid || '');
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(cid)) return J({ ok: false, error: 'invalid' }, 400);
   const method = b.method === 'card' ? 'card' : 'wa', lang = b.lang === 'en' ? 'en' : 'ar';
   if (b.items.length < 1 || b.items.length > 30) return J({ ok: false, error: 'invalid' }, 400);
 
+  const acc = await currentAccount(request, env); // الحساب من الكوكي فقط
+  let addrVerified = 0;
+  if (na.short && env.SPL_API_KEY) { const lk = await lookupShort(env, na.short); if (lk.ok && lk.found && lk.a.bno === na.bno && lk.a.post === na.post) addrVerified = 1; }
   const cat = await effectiveCatalog(env);
   const items = [], want = {};
   for (const it of b.items) {
@@ -141,8 +159,8 @@ async function createOrder({ request, env, waitUntil }) {
   for (let t = 0; t < 6 && !saved; t++) {
     ref = 'MW-' + day + '-' + [...crypto.getRandomValues(new Uint8Array(3))].map(x => x.toString(36).toUpperCase()).join('').replace(/[^A-Z0-9]/g, '0').padEnd(4, '0').slice(0, 4);
     try {
-      await env.DB.prepare('INSERT INTO orders (ref,cid,created_at,updated_at,name,phone,city,address,notes,items,subtotal,discount,free_shipping,total,coupon,coupon_pct,lang,method,ip_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .bind(ref, cid, now, now, name, phone, city, address, notes, JSON.stringify(items), sub, d, free, total, cp ? cp.code : '', cp ? cp.pct : 0, lang, method, ih).run();
+      await env.DB.prepare('INSERT INTO orders (ref,cid,created_at,updated_at,name,phone,city,address,notes,items,subtotal,discount,free_shipping,total,coupon,coupon_pct,lang,method,ip_hash,account_id,addr_short,addr_building,addr_street,addr_district,addr_post,addr_extra,addr_verified) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .bind(ref, cid, now, now, name, phone, city, address, notes, JSON.stringify(items), sub, d, free, total, cp ? cp.code : '', cp ? cp.pct : 0, lang, method, ih, acc ? acc.id : null, na.short, na.bno, na.street, na.district, na.post, na.extra, addrVerified).run();
       saved = true;
     } catch (e) {
       if (!/UNIQUE/i.test(String(e && e.message || e))) { for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run(); throw e; }
@@ -151,6 +169,7 @@ async function createOrder({ request, env, waitUntil }) {
   }
   if (!saved) { for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run(); return J({ ok: false, error: 'server' }, 500); }
   if (cp) await env.DB.prepare('UPDATE coupons SET used = used + 1 WHERE code = ?').bind(cp.code).run();
+  if (acc) { try { await markPhoneUsed(env, acc, phone); } catch (e) { } }
   return J({ ok: true, ref, at: now, sub, d, pct: cp ? cp.pct : 0, free: !!free, total, coupon: cp ? cp.code : '' });
 }
 
@@ -178,7 +197,7 @@ async function verifyPayment(env, order, invId) {
 // بدء الدفع: ننشئ منتجًا لهذا الطلب بالمبلغ النهائي (يشمل الخصم والشحن) ورابط دفع، ونعيد الرابط للمتصفح.
 async function payStart(request, env) {
   if (!sameOrigin(request)) return J({ ok: false, error: 'origin' }, 403);
-  if (!streamOn(env)) return J({ ok: false, error: 'pay_off' }, 503);
+  if (!streamOn(env) || (await getSetting(env, 'pay_card_on', '1')) === '0') return J({ ok: false, error: 'pay_off' }, 503);
   const b = await readJson(request, 500);
   if (!b || typeof b.ref !== 'string') return J({ ok: false, error: 'invalid' }, 400);
   const o = await env.DB.prepare('SELECT ref, total, method, pay_verified, status FROM orders WHERE ref = ?').bind(b.ref.slice(0, 32)).first();

@@ -1,5 +1,15 @@
 // ملف مولَّد من بيانات المتجر (الأسعار الأساسية). التعديلات من لوحة الأدمن تُحفظ في قاعدة البيانات وتتفوق على هذه القيم.
 export const CATALOG = {
+ "moka-300": {
+  "name": "ركوة موكا ألمنيوم 300 مل",
+  "en": "Aluminium Moka Pot 300 ml",
+  "cat": "gear",
+  "price": 79,
+  "old": 0,
+  "img": "moka-300",
+  "brand": "لوتشي",
+  "variants": null
+ },
  "nespresso-pop": {
   "name": "ماكينة نسبريسو فيرتو بوب من ديلونجي",
   "en": "Nespresso Vertuo Pop by DeLonghi",

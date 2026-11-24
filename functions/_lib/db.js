@@ -41,7 +41,7 @@ export const getFreeFrom = async env => { const n = Number(await getSetting(env,
 export async function effectiveCatalog(env) {
   const { results } = await env.DB.prepare('SELECT id, price, old_price, stock, hidden, extra FROM products').all();
   const out = {};
-  for (const [id, b] of Object.entries(CATALOG)) out[id] = { id, name: b.name, en: b.en, cat: b.cat, price: b.price, old: b.old || 0, img: b.img, brand: b.brand, variants: b.variants, stock: null, hidden: 0, custom: 0 };
+  for (const [id, b] of Object.entries(CATALOG)) out[id] = { id, name: b.name, en: b.en, cat: b.cat, price: b.price, old: b.old || 0, img: b.img, brand: b.brand, variants: b.variants, stock: b.soon ? 0 : null, hidden: 0, custom: 0 };
   for (const r of results) {
     let x = out[r.id];
     if (r.extra) {

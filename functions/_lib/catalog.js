@@ -1,5 +1,16 @@
 // ملف مولَّد من بيانات المتجر (الأسعار الأساسية). التعديلات من لوحة الأدمن تُحفظ في قاعدة البيانات وتتفوق على هذه القيم.
 export const CATALOG = {
+ "nespresso-pop": {
+  "name": "ماكينة نسبريسو فيرتو بوب من ديلونجي",
+  "en": "Nespresso Vertuo Pop by DeLonghi",
+  "cat": "gear",
+  "price": 649,
+  "old": 0,
+  "img": "nespresso-pop",
+  "brand": "نسبريسو",
+  "variants": null,
+  "soon": true
+ },
  "v60-set": {
   "name": "طقم V60 للسفر",
   "en": "V60 Travel Set",

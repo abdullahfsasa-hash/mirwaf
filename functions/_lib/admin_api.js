@@ -2,6 +2,7 @@
 // يُستدعى من الموجّه بعد التحقق من الجلسة وترويسة CSRF. يرجع null للمسارات التي لا يعالجها.
 import { J, clean, dig, readJson } from './util.js';
 import { effectiveCatalog, getSetting, setSetting, getFreeFrom } from './db.js';
+import { aramexCreate, carriersOn } from './carriers.js';
 
 const STATUSES = ['new', 'confirmed', 'shipped', 'done', 'cancelled'];
 const CATS = ['beans', 'cups', 'gear', 'filters', 'matcha'];
@@ -141,6 +142,22 @@ async function orderDetail(env, ref) {
   const dup = same.filter(r => normPhone(r.phone) === ph && Math.abs(r.created_at - o.created_at) < DAY).map(r => ({ ref: r.ref, created_at: r.created_at, status: r.status, total: r.total }));
   const { results: prior } = await env.DB.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(total),0) AS s FROM orders WHERE phone = ? AND ref <> ? AND status <> \'cancelled\'').bind(o.phone, ref).all();
   return J({ ok: true, order: { ...o, items: parseItems(o.items), addr_missing: addrMissing(o), track_url: trackUrl(o.carrier, o.tracking_no) }, events, duplicates: dup, customer: { orders: prior[0].n, spent: prior[0].s } });
+}
+
+// إنشاء شحنة عبر API الناقل (أرامكس) وحفظ رقم التتبع على الطلب. لا يعمل إلا لو مفاتيح الناقل موجودة.
+async function orderShipment(request, env, ref) {
+  const x = await readJson(request, 400) || {};
+  if (x.carrier !== 'aramex') return J({ ok: false, error: 'invalid' }, 400);
+  const o = await env.DB.prepare('SELECT ref, status, name, phone, city, address, total, items, tracking_no, addr_post, pay_verified FROM orders WHERE ref = ?').bind(ref).first();
+  if (!o) return J({ ok: false, error: 'not_found' }, 404);
+  if (o.status === 'cancelled') return J({ ok: false, error: 'cancelled' }, 409);
+  if (o.tracking_no && !x.force) return J({ ok: false, error: 'has_tracking' }, 409);
+  const cod = !!x.cod && !o.pay_verified;
+  const r = await aramexCreate(env, o, parseItems(o.items), { cod });
+  if (!r.ok) return J(r, r.error === 'carrier_off' ? 503 : 502);
+  await env.DB.prepare('UPDATE orders SET carrier = ?, tracking_no = ?, updated_at = ? WHERE ref = ?').bind('aramex', r.tracking, Date.now(), ref).run();
+  await event(env, ref, 'ship', 'تم إنشاء شحنة أرامكس رقم ' + r.tracking + (cod ? ' (دفع عند الاستلام)' : ''));
+  return J({ ok: true, tracking: r.tracking, label: r.label });
 }
 
 // تغيير الحالة: الإلغاء يُعيد المخزون مرة واحدة فقط (حارس ذرّي على الحالة) ويخفض عدّاد الكوبون.
@@ -506,6 +523,7 @@ export async function adminRoute(request, env, path) {
     if (d === 'verify') return null; // يعالجها الموجّه الأصلي (تحقق Stream)
     if (d === 'status') { const x = await readJson(request, 300); const r = await applyStatus(env, ref, x && x.status); return r.ok ? J({ ok: true }) : J(r, r.error === 'not_found' ? 404 : r.error === 'invalid' ? 400 : 409); }
     if (d === 'update') return orderPatch(request, env, ref);
+    if (d === 'shipment') return orderShipment(request, env, ref);
     if (d === 'items') return orderItems(request, env, ref);
     if (d === 'note') return orderNote(request, env, ref);
     if (!d) { // توافق مع الواجهة القديمة: {status}
@@ -529,7 +547,7 @@ export async function adminRoute(request, env, path) {
   if (b === 'coupons' && !c && m === 'POST') return couponSave(request, env);
   if (b === 'coupons' && c && m === 'DELETE') { await env.DB.prepare('DELETE FROM coupons WHERE code = ?').bind(clean(c, 40).toUpperCase()).run(); return J({ ok: true }); }
 
-  if (b === 'settings' && m === 'GET') return J({ ok: true, settings: await allSettings(env), stream: !!(env.STREAM_API_KEY && env.STREAM_API_SECRET), spl: !!env.SPL_API_KEY, carriers: Object.fromEntries(Object.entries(CARRIERS).map(([k, v]) => [k, { name: v.name, track: !!v.url }])), webhook: !!env.STREAM_WEBHOOK_SECRET, free_from: Number((await allSettings(env)).free_from) });
+  if (b === 'settings' && m === 'GET') return J({ ok: true, settings: await allSettings(env), stream: !!(env.STREAM_API_KEY && env.STREAM_API_SECRET), spl: !!env.SPL_API_KEY, carriers_api: carriersOn(env), carriers: Object.fromEntries(Object.entries(CARRIERS).map(([k, v]) => [k, { name: v.name, track: !!v.url }])), webhook: !!env.STREAM_WEBHOOK_SECRET, free_from: Number((await allSettings(env)).free_from) });
   if (b === 'settings' && m === 'POST') return settingsSave(request, env);
   if (b === 'backup' && m === 'GET') return backup(env);
   if (b === 'health' && m === 'GET') return health(env);

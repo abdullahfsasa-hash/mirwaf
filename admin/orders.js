@@ -124,6 +124,10 @@
       tu ? h('div', { class: 'sm', style: 'margin-bottom:8px' }, 'رابط التتبع: ', h('a', { href: tu, target: '_blank', rel: 'noopener noreferrer' }, 'فتح صفحة التتبع')) : null,
       h('div', { class: 'row' },
         h('button', { class: 'btn', onclick: async () => { const x = await A.save('orders/' + o.ref + '/update', { method: 'POST', body: { carrier: carSel.value, tracking_no: trk.value } }, 'تم حفظ بيانات الشحن'); if (x.ok) refresh(); else trk.classList.add('bad'); } }, 'حفظ'),
+        h('button', { class: 'btn', disabled: locked || !!o.tracking_no, title: 'ينشئ شحنة عبر API أرامكس ويحفظ رقم التتبع', onclick: async () => {
+          const cod = !o.pay_verified && await A.confirm('دفع عند الاستلام؟', 'الطلب غير مدفوع إلكترونيًا. تحصيل ' + money(o.total) + ' عند التسليم عبر أرامكس؟', 'نعم، تحصيل عند الاستلام');
+          const x = await A.save('orders/' + o.ref + '/shipment', { method: 'POST', body: { carrier: 'aramex', cod: !!cod } }, 'تم إنشاء شحنة أرامكس'); if (x.ok) refresh();
+        } }, ic('truck'), 'إنشاء شحنة أرامكس'),
         h('button', { class: 'btn pri', disabled: locked || o.status === 'shipped' || o.status === 'done', onclick: async () => {
           if (o.addr_missing && !await A.confirm('العنوان ناقص', 'العنوان الوطني غير مكتمل. تبي تعلّم الطلب «تم الشحن» رغم ذلك؟', 'متابعة')) return;
           const x = await A.save('orders/' + o.ref + '/update', { method: 'POST', body: { carrier: carSel.value, tracking_no: trk.value } }); if (!x.ok) return;

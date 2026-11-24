@@ -1,7 +1,7 @@
 // حسابات العملاء: دخول بحساب جوجل (مجاني) + رقم جوال. لا رمز تحقق SMS.
 // الميزة مطفأة حتى يُضبط GOOGLE_CLIENT_ID (معرّف عام وليس سرًّا). الضيف يطلب كالمعتاد.
 import { J, clean, dig, ipHash, sameOrigin, readJson, safeEqual, sha } from './util.js';
-import { validateAddress, lookupShort } from './address.js';
+import { validateAddress, lookupShort, lookupOn } from './address.js';
 
 const COOKIE = 'mw_user';
 const TTL = 30 * 86400 * 1000;
@@ -189,7 +189,7 @@ export async function markPhoneUsed(env, acc, orderPhone) {
 
 export async function addressLookupRoute(request, env) {
   if (!sameOrigin(request)) return J({ ok: false, error: 'origin' }, 403);
-  if (!env.SPL_API_KEY) return J({ ok: true, enabled: false });
+  if (!lookupOn(env)) return J({ ok: true, enabled: false });
   const body = await readJson(request, 500);
   if (!body) return J({ ok: false, error: 'invalid' }, 400);
   if (await limited(env, request, 'addr', 20, 600000)) return J({ ok: false, error: 'rate' }, 429, { 'retry-after': '600' });

@@ -3,6 +3,7 @@
 import { J, clean, dig, readJson } from './util.js';
 import { effectiveCatalog, getSetting, setSetting, getFreeFrom } from './db.js';
 import { aramexCreate, carriersOn } from './carriers.js';
+import { lookupOn } from './address.js';
 
 const STATUSES = ['new', 'confirmed', 'shipped', 'done', 'cancelled'];
 const CATS = ['beans', 'cups', 'gear', 'filters', 'matcha'];
@@ -547,7 +548,7 @@ export async function adminRoute(request, env, path) {
   if (b === 'coupons' && !c && m === 'POST') return couponSave(request, env);
   if (b === 'coupons' && c && m === 'DELETE') { await env.DB.prepare('DELETE FROM coupons WHERE code = ?').bind(clean(c, 40).toUpperCase()).run(); return J({ ok: true }); }
 
-  if (b === 'settings' && m === 'GET') return J({ ok: true, settings: await allSettings(env), stream: !!(env.STREAM_API_KEY && env.STREAM_API_SECRET), spl: !!env.SPL_API_KEY, carriers_api: carriersOn(env), carriers: Object.fromEntries(Object.entries(CARRIERS).map(([k, v]) => [k, { name: v.name, track: !!v.url }])), webhook: !!env.STREAM_WEBHOOK_SECRET, free_from: Number((await allSettings(env)).free_from) });
+  if (b === 'settings' && m === 'GET') return J({ ok: true, settings: await allSettings(env), stream: !!(env.STREAM_API_KEY && env.STREAM_API_SECRET), spl: lookupOn(env), carriers_api: carriersOn(env), carriers: Object.fromEntries(Object.entries(CARRIERS).map(([k, v]) => [k, { name: v.name, track: !!v.url }])), webhook: !!env.STREAM_WEBHOOK_SECRET, free_from: Number((await allSettings(env)).free_from) });
   if (b === 'settings' && m === 'POST') return settingsSave(request, env);
   if (b === 'backup' && m === 'GET') return backup(env);
   if (b === 'health' && m === 'GET') return health(env);

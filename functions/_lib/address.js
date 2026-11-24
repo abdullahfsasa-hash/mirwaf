@@ -1,6 +1,7 @@
 // العنوان الوطني السعودي: التحقق من الحقول، وبحث اختياري عبر واجهة سبل (SPL) عند توفّر SPL_API_KEY.
 import { clean, dig } from './util.js';
 
+const OTO = 'https://api.tryoto.com/rest/v2';
 const SPL = 'https://apina.address.gov.sa/NationalAddress/NationalAddressByShortAddress/NationalAddressByShortAddress';
 
 export const normShort = s => dig(String(s || '')).toUpperCase().replace(/[\s-]/g, '');
@@ -33,10 +34,54 @@ const pick = (o, ...ks) => { for (const k of ks) if (o && o[k] != null && String
 //  { ok:true, enabled:true, found:false }     لا نتيجة
 //  { ok:true, enabled:true, found:true, a }   العنوان
 //  { ok:false, error:'upstream' }             تعذّر الاتصال بالخدمة
+export const lookupOn = env => !!(env.OTO_REFRESH_TOKEN || env.SPL_API_KEY);
+
+// OTO: refresh_token (سرّي في Cloudflare) يُستبدل بـ access_token صالح ساعة، يُحفظ في ذاكرة الـ isolate.
+let otoTok = null, otoExp = 0;
+async function otoAccess(env) {
+  if (otoTok && Date.now() < otoExp) return otoTok;
+  const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
+  try {
+    const r = await fetch(OTO + '/refreshToken', { method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ refresh_token: env.OTO_REFRESH_TOKEN }) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const t = j && (j.access_token || (j.data && j.data.access_token));
+    if (!t) return null;
+    otoTok = t; otoExp = Date.now() + 50 * 60 * 1000;
+    return t;
+  } catch (e) { return null; } finally { clearTimeout(tm); }
+}
+
+async function lookupOto(env, short) {
+  const tok = await otoAccess(env);
+  if (!tok) return { ok: false, error: 'upstream' };
+  let j;
+  try {
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
+    const r = await fetch(OTO + '/getNationalAddressFromShortCode', { method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json', accept: 'application/json', authorization: 'Bearer ' + tok }, body: JSON.stringify({ shortAddressCode: short }) });
+    clearTimeout(tm);
+    if (r.status === 401) { otoTok = null; return { ok: false, error: 'upstream' }; }
+    if (r.status === 404 || r.status === 400) return { ok: true, enabled: true, found: false };
+    if (!r.ok) return { ok: false, error: 'upstream' };
+    j = await r.json();
+  } catch (e) { return { ok: false, error: 'upstream' }; }
+  const x = j && j.data;
+  if (!x || j.success === false) return { ok: true, enabled: true, found: false };
+  const ar = o => (o && (o.nameAr || o.name_ar || o.arName)) || '';
+  const a = {
+    city: clean(pick(x, 'cityName') || ar(x.city), 60), district: clean(pick(x, 'districtName') || ar(x.district), 60), street: clean(pick(x, 'streetName'), 80),
+    bno: dig(pick(x, 'buildingName', 'buildingNumber')), post: dig(pick(x, 'zipCode')), extra: dig(pick(x, 'secondary', 'additionalNumber')), short
+  };
+  if (!/^\d{4}$/.test(a.bno) || !/^\d{5}$/.test(a.post)) return { ok: true, enabled: true, found: false };
+  if (!/^\d{4}$/.test(a.extra)) a.extra = '';
+  return { ok: true, enabled: true, found: true, a };
+}
+
 export async function lookupShort(env, shortRaw) {
-  if (!env.SPL_API_KEY) return { ok: true, enabled: false };
+  if (!env.OTO_REFRESH_TOKEN && !env.SPL_API_KEY) return { ok: true, enabled: false };
   const short = normShort(shortRaw);
   if (!validShort(short)) return { ok: false, error: 'invalid' };
+  if (env.OTO_REFRESH_TOKEN) return lookupOto(env, short);
   const url = SPL + '?format=json&language=ar&encode=utf8&shortaddress=' + encodeURIComponent(short) + '&api_key=' + encodeURIComponent(env.SPL_API_KEY);
   let j;
   try {

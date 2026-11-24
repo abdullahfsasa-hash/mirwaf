@@ -3,7 +3,7 @@ import { J, clean, dig, ipHash, sameOrigin, readJson } from '../_lib/util.js';
 import { init, effectiveCatalog, findCoupon, getFreeFrom, getSetting, setSetting } from '../_lib/db.js';
 import { streamOn, createProduct, findProductByName, createPaymentLink, getInvoice, verifyWebhook } from '../_lib/stream.js';
 import { accountRoute, addressLookupRoute, accountsOn, currentAccount, markPhoneUsed } from '../_lib/accounts.js';
-import { validateAddress, addrLine, lookupShort } from '../_lib/address.js';
+import { validateAddress, addrLine, lookupShort, lookupOn } from '../_lib/address.js';
 import { adminRoute, publicStoreSettings } from '../_lib/admin_api.js';
 import { isAdmin, adminEnabled, makeCookie, clearCookie, loginAttempt, revokeSessions } from '../_lib/auth.js';
 
@@ -84,7 +84,7 @@ async function catalog(env) {
     items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden };
     if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, short: e.short || '', desc: e.desc || '' }); }
   }
-  return J({ ok: true, pay: streamOn(env) && (await getSetting(env, 'pay_card_on', '1')) !== '0', freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: !!env.SPL_API_KEY }, 200, { 'cache-control': 'public, max-age=30' });
+  return J({ ok: true, pay: streamOn(env) && (await getSetting(env, 'pay_card_on', '1')) !== '0', freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: lookupOn(env) }, 200, { 'cache-control': 'public, max-age=30' });
 }
 
 async function couponCheck(request, env) {
@@ -115,7 +115,7 @@ async function createOrder({ request, env, waitUntil }) {
 
   const acc = await currentAccount(request, env); // الحساب من الكوكي فقط
   let addrVerified = 0;
-  if (na.short && env.SPL_API_KEY) { const lk = await lookupShort(env, na.short); if (lk.ok && lk.found && lk.a.bno === na.bno && lk.a.post === na.post) addrVerified = 1; }
+  if (na.short && lookupOn(env)) { const lk = await lookupShort(env, na.short); if (lk.ok && lk.found && lk.a.bno === na.bno && lk.a.post === na.post) addrVerified = 1; }
   const cat = await effectiveCatalog(env);
   const items = [], want = {};
   for (const it of b.items) {

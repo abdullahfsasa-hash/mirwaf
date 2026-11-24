@@ -1291,7 +1291,7 @@ const DICT = {
   'لديك حساب؟ سجّل الدخول بجوجل لتعبئة بياناتك وعنوانك الوطني تلقائيًا، أو أكمل كضيف بالنموذج أدناه.': 'Have an account? Sign in with Google to fill in your details and National Address automatically, or continue as a guest below.',
   'احفظ جوالي وعنواني لطلباتي القادمة': 'Save my phone and address for next time',
   'أدخل بيانات التوصيل بالعنوان الوطني وسنجهّز طلبك.': 'Enter your delivery details using your National Address and we will prepare your order.',
-  'العنوان الوطني': 'National Address', 'العنوان المختصر (اختياري)': 'Short address (optional)', 'جلب العنوان': 'Look up address', 'جارٍ الجلب…': 'Looking up…',
+  'العنوان الوطني': 'National Address', 'العنوان المختصر (إلزامي)': 'Short address (required)', 'العنوان المختصر مطلوب: 4 أحرف و4 أرقام، مثل RRRD2929.': 'Short address is required: 4 letters and 4 digits, e.g. RRRD2929.', 'البريد الإلكتروني (اختياري)': 'Email (optional)', 'نرسل لك ملخص الطلب على هذا البريد.': 'We will email your order summary here.', 'اكتب بريدًا إلكترونيًا صحيحًا.': 'Enter a valid email address.', 'جلب العنوان': 'Look up address', 'جارٍ الجلب…': 'Looking up…',
   '4 أحرف و4 أرقام، تجدها في تطبيق «العنوان الوطني» أو على لوحة المبنى.': '4 letters and 4 digits, found in the National Address app or on the building sign.',
   'المدينة': 'City', 'الحي': 'District', 'الشارع': 'Street', 'رقم المبنى': 'Building number', 'الرمز البريدي': 'Postcode', 'الرقم الإضافي': 'Additional number',
   'ملاحظات للتوصيل (اختياري)': 'Delivery notes (optional)', 'رقم الجوال': 'Mobile number',
@@ -2169,12 +2169,13 @@ async function doLogout() {
 function shipDefaults() {
   const g = store.get('mirwaf.ship', {}) || {}, u = S.user || {}, a = u.addr || null, o = { name: u.name || g.name || '', phone: u.phone ? '0' + String(u.phone).replace(/^966/, '') : (g.phone || '') };
   SHIP_KEYS.forEach(k => { o[k] = String((a ? a[k] : g[k]) || ''); });
+  o.email = String(g.email || '');
   return o;
 }
 function addrFieldsHTML(p) {
   const f = (k, label, extra, full) => `<div class="fld ${full ? 'full' : ''}"><label for="${p}-${k}">${label}</label><input class="inp" id="${p}-${k}" ${extra}><div class="err" id="${p}-${k}-e"></div></div>`;
   return `<div class="full subh">العنوان الوطني</div>
-    <div class="fld full"><label for="${p}-short">العنوان المختصر (اختياري)</label>
+    <div class="fld full"><label for="${p}-short">العنوان المختصر (إلزامي)</label>
       <div class="row2"><input class="inp" id="${p}-short" maxlength="9" dir="ltr" data-end autocapitalize="characters" autocomplete="off" placeholder="RRRD2929">${ADDR_LOOKUP ? `<button class="btn btn--line btn--sm" type="button" data-act="addr-lookup" data-p="${p}" id="${p}-lk">جلب العنوان</button>` : ''}</div>
       <div class="err" id="${p}-short-e"></div><div class="hint" id="${p}-short-h">4 أحرف و4 أرقام، تجدها في تطبيق «العنوان الوطني» أو على لوحة المبنى.</div></div>
     ${f('city', 'المدينة', 'autocomplete="address-level2" maxlength="60"')}
@@ -2193,7 +2194,7 @@ function readAddr(p) {
 const addrRules = (p, o) => [
   [p + '-city', o.city.length >= 2, 'اكتب اسم المدينة.'], [p + '-district', o.district.length >= 2, 'اكتب اسم الحي.'], [p + '-street', o.street.length >= 2, 'اكتب اسم الشارع.'],
   [p + '-bno', /^\d{4}$/.test(o.bno), 'رقم المبنى 4 أرقام.'], [p + '-post', /^\d{5}$/.test(o.post), 'الرمز البريدي 5 أرقام.'], [p + '-extra', /^\d{4}$/.test(o.extra), 'الرقم الإضافي 4 أرقام.'],
-  [p + '-short', !o.short || /^[A-Z]{4}\d{4}$/.test(o.short), 'العنوان المختصر 4 أحرف و4 أرقام، مثل RRRD2929.']
+  [p + '-short', /^[A-Z]{4}\d{4}$/.test(o.short), 'العنوان المختصر مطلوب: 4 أحرف و4 أرقام، مثل RRRD2929.']
 ];
 function showRules(rules) {
   let bad = null;
@@ -2227,8 +2228,9 @@ function coAcctHTML() {
   return `<div class="acctbox"><p>لديك حساب؟ سجّل الدخول بجوجل لتعبئة بياناتك وعنوانك الوطني تلقائيًا، أو أكمل كضيف بالنموذج أدناه.</p><div class="gbtn" data-gbtn data-notr></div></div>`;
 }
 function prefillCheckout() {
-  const d = shipDefaults(), n = $('#f-name'), ph = $('#f-phone');
+  const d = shipDefaults(), n = $('#f-name'), ph = $('#f-phone'), em = $('#f-email');
   if (n && !n.value && d.name) n.value = d.name;
+  if (em && !em.value) em.value = (S.user && S.user.email) || d.email || '';
   if (ph && !ph.value && d.phone) ph.value = d.phone;
   fillAddr('f', d, false);
 }
@@ -2298,6 +2300,8 @@ function vCheckout() {
           <div class="fld full" id="coAcct" style="margin-bottom:-2px">${coAcctHTML()}</div>
           ${fld('f-name', 'الاسم الكامل', 'autocomplete="name" maxlength="80" required', true)}
           ${fld('f-phone', 'رقم الجوال', 'type="tel" inputmode="tel" autocomplete="tel" maxlength="20" dir="ltr" data-end placeholder="05XXXXXXXX" required', true)}
+          ${fld('f-email', 'البريد الإلكتروني (اختياري)', 'type="email" inputmode="email" autocomplete="email" maxlength="120" dir="ltr" data-end placeholder="name@example.com"', true)}
+          <div class="hint full" style="margin-top:-8px">نرسل لك ملخص الطلب على هذا البريد.</div>
           ${addrFieldsHTML('f')}
           ${fld('f-notes', 'ملاحظات للتوصيل (اختياري)', 'rows="3" maxlength="500"', true, 'textarea')}
         </div>
@@ -2611,14 +2615,14 @@ document.addEventListener('submit', async e => {
     const cv = (id, n, nl) => clean($('#' + id).value, n, nl);
     const dig = s => s.replace(/[\u0660-\u0669]/g, c => c.charCodeAt(0) - 0x660).replace(/[\u06F0-\u06F9]/g, c => c.charCodeAt(0) - 0x6F0);
     const ad = readAddr('f');
-    const rules = [['f-name', v('f-name').length >= 3, 'اكتب اسمك الكامل.'], ['f-phone', /^\+?\d{9,15}$/.test(dig(v('f-phone')).replace(/[\s-]/g, '')), 'اكتب رقم جوال صحيح، مثل 05XXXXXXXX.'], ...addrRules('f', ad)];
+    const rules = [['f-name', v('f-name').length >= 3, 'اكتب اسمك الكامل.'], ['f-phone', /^\+?\d{9,15}$/.test(dig(v('f-phone')).replace(/[\s-]/g, '')), 'اكتب رقم جوال صحيح، مثل 05XXXXXXXX.'], ['f-email', !v('f-email') || /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[A-Za-z]{2,}$/.test(v('f-email')), 'اكتب بريدًا إلكترونيًا صحيحًا.'], ...addrRules('f', ad)];
     let bad = null;
     rules.forEach(([id, ok, msg]) => { const el = $('#' + id), er = $('#' + id + '-e'); if (ok) { el.removeAttribute('aria-invalid'); er.textContent = ''; } else { el.setAttribute('aria-invalid', 'true'); er.textContent = msg; if (!bad) bad = el; } });
     if (bad) { bad.focus(); return; }
     const t = totals();
     const o = {
       ref: 'MW-' + new Date().toISOString().slice(2, 10).replace(/-/g, '') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase(), at: Date.now(),
-      c: { name: cv('f-name', 80), phone: dig(cv('f-phone', 20)), ...ad, addr: addrLineC(ad), notes: cv('f-notes', 500, true) },
+      c: { name: cv('f-name', 80), phone: dig(cv('f-phone', 20)), email: cv('f-email', 120).toLowerCase(), ...ad, addr: addrLineC(ad), notes: cv('f-notes', 500, true) },
       items: t.lines.map(l => ({ id: l.id, name: (AR0.P.find(x => x.id === l.id) || l.p).name, v: l.v, qty: l.qty, price: l.p.price })), count: t.count, sub: t.sub, d: t.d, free: t.free, total: t.total
     };
     if (!CATALOG_OK) await loadCatalog(); // لو فشل تحميل الإعدادات سابقًا، نعيد المحاولة قبل أن نقرر طريقة الدفع
@@ -2634,7 +2638,7 @@ document.addEventListener('submit', async e => {
     else if (sr) { rst(); toast(sr.error === 'stock' ? 'نفدت كمية أحد المنتجات. راجع سلتك بعد تحديث الأسعار والمخزون.' : sr.error === 'rate' || sr.error === 'busy' ? 'محاولات كثيرة، حاول بعد قليل.' : 'تعذّر إرسال الطلب، تحقق من البيانات وحاول مرة أخرى.'); if (sr.error === 'stock') loadCatalog(); return; }
     else if (o.method === 'card') { rst(); toast('تعذّر الاتصال بالخادم. اختر الطلب عبر واتساب أو حاول لاحقًا.'); return; }
     {
-      const sv = { name: o.c.name, phone: o.c.phone }; SHIP_KEYS.forEach(k => { sv[k] = o.c[k]; }); store.set('mirwaf.ship', sv);
+      const sv = { name: o.c.name, phone: o.c.phone, email: o.c.email }; SHIP_KEYS.forEach(k => { sv[k] = o.c[k]; }); store.set('mirwaf.ship', sv);
       const keep = !($('#f-save') && !$('#f-save').checked);
       if (S.user && keep && sr && sr.ok) apiCall('account/profile', { name: o.c.name, phone: o.c.phone, addr: ad }).then(r2 => { if (r2 && r2.ok) S.user = r2.user; });
     }

@@ -11,7 +11,7 @@
 <meta property="og:image" content="https://lucebrew.com/img/logo-badge.webp">
 <link rel="canonical" href="https://lucebrew.com/">
 <meta property="og:url" content="https://lucebrew.com/">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Store","name":"لوتشي | Luce Coffee & More","url":"https://lucebrew.com/","logo":"https://lucebrew.com/img/logo-badge.webp","telephone":"+966551890800","email":"info@lucebrew.com","description":"قهوة مختصة وأكواب ومعدات تحضير"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Store","name":"لوتشي | Luce Coffee & More","url":"https://lucebrew.com/","logo":"https://lucebrew.com/img/logo-badge.webp","telephone":"+966551027895","email":"info@lucebrew.com","description":"قهوة مختصة وأكواب ومعدات تحضير"}</script>
 <link rel="icon" type="image/webp" href="img/logo-badge.webp">
 <link rel="apple-touch-icon" href="img/logo-badge.webp">
 <link rel="manifest" href="/manifest.json">
@@ -367,6 +367,7 @@ h1,h2,h3,h4{font-family:var(--font-display);font-weight:500;text-wrap:balance;li
 .foot li{margin-bottom:9px;font-size:14.5px}
 .foot a,.foot button{color:var(--foot-mute);transition:color .2s;text-align:start}
 .foot a:hover,.foot button:hover{color:#fff}
+.foot__social{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;list-style:none;padding:0}.foot__social[hidden]{display:none}.foot__social li{margin:0}.foot__social a{display:inline-block;padding:7px 14px;border:1px solid rgba(232,223,204,.28);border-radius:999px;font-size:13.5px}.foot__social a:hover{border-color:#fff}
 .foot__about{color:var(--foot-mute);font-size:14.5px;max-width:34ch;margin-top:14px}
 .foot__bar{border-top:1px solid rgba(232,223,204,.14);padding-block:18px calc(18px + env(safe-area-inset-bottom,0px));display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--foot-mute)}
 @media (max-width:900px){.foot__in{grid-template-columns:1fr 1fr}.foot__in>div:first-child{grid-column:1/-1}}
@@ -691,6 +692,7 @@ textarea.inp{min-height:96px;resize:vertical;line-height:1.7}
     <div>
       <a class="logo" href="#home" data-nav aria-label="لوتشي"><i></i></a>
       <p class="foot__about">قهوة وأكثر. محاصيل بن مختارة، وأكواب، ومعدات تحضير، في مكان واحد.</p>
+      <ul class="foot__social" id="footSocial" aria-label="حسابات لوتشي" hidden></ul>
     </div>
     <div>
       <h4>تسوّق</h4>
@@ -709,6 +711,7 @@ textarea.inp{min-height:96px;resize:vertical;line-height:1.7}
       <h4>خدمة العملاء</h4>
       <ul>
         <li><button type="button" data-act="open-chat">اسأل مساعد لوتشي</button></li>
+        <li><a href="https://wa.me/966551027895" target="_blank" rel="noopener noreferrer" dir="ltr">واتساب: 055 102 7895</a></li>
         <li><a href="mailto:info@lucebrew.com" dir="ltr">info@lucebrew.com</a></li>
         <li><span style="color:var(--foot-mute)">توصيل مجاني فوق 200 ريال</span></li>
         <li><span style="color:var(--foot-mute)">كود الإطلاق LUCE10</span></li>
@@ -761,13 +764,15 @@ textarea.inp{min-height:96px;resize:vertical;line-height:1.7}
 'use strict';
 /* ===================== الإعدادات ===================== */
 const CONFIG = {
-  whatsapp: '966551890800', // رقم واتساب المتجر بصيغة دولية بدون + . كل طلب جديد يصل إليه كرسالة كاملة.
+  whatsapp: '966551027895', // رقم واتساب المتجر بصيغة دولية بدون + . كل طلب جديد يصل إليه كرسالة كاملة.
   freeFrom: 200,         // حد التوصيل المجاني بالريال
   code: 'LUCE10',       // كود الخصم
   pct: 10,               // نسبة الخصم
   // ===== الدفع الإلكتروني (Stream) — المفتاح السري على الخادم فقط (Cloudflare)، ويُفعَّل تلقائيًا =====
   // ضع هنا المفتاح العام (Publishable Key) فقط: يبدأ بـ pk_test_ للتجربة أو pk_live_ للتشغيل. لا تضع المفتاح السري (sk_) هنا أبدًا.
-  freelanceNo: ''        // رقم وثيقة العمل الحر: يظهر في تذييل الموقع إن وُضع
+  freelanceNo: '',       // رقم وثيقة العمل الحر: يظهر في تذييل الموقع إن وُضع
+  // حسابات التواصل في تذييل الموقع: ضع اسم المستخدم فقط (بدون @ وبدون رابط). الفارغ لا يظهر.
+  social: { instagram: '7lucer', tiktok: '9luce3', snapchat: '', x: '', youtube: '' }
 };
 
 /* ===================== الأقسام ===================== */
@@ -783,6 +788,13 @@ const NAV = ['home', 'beans', 'cups', 'gear', 'filters', 'blog'];
 /* ===================== المنتجات =====================
    ph:true  = السعر مؤقت ويحتاج تأكيدك. الأسعار الحقيقية جاءت من محادثتك وإعلاناتك. */
 const P = [
+  { id: 'nespresso-pop', cat: 'gear', name: 'ماكينة نسبريسو فيرتو بوب من ديلونجي', en: 'Nespresso Vertuo Pop by DeLonghi', brand: 'نسبريسو',
+    sub: 'كبسولات فيرتو • 4 أحجام أكواب • تقنية الطرد المركزي', price: 649, old: 0, soon: true, stock: 0,
+    img: 'nespresso-pop', gallery: ['nespresso-pop'], tags: [],
+    short: 'ماكينة كبسولات مدمجة وأنيقة من نسبريسو وديلونجي، تحضّر قهوتك بضغطة واحدة وبأحجام أكواب متعددة. قريبًا في لوتشي.',
+    desc: 'ماكينة نسبريسو فيرتو بوب من ديلونجي بتصميم مدمج وألوان عصرية، تعتمد تقنية الطرد المركزي لتحضير كوب متوازن بطبقة كريما غنية، وتدعم أحجام أكواب مختلفة. تأتي مع حزمة الترحيب. متوفرة قريبًا.',
+    details: ['تقنية الطرد المركزي (Centrifusion)', 'تدعم أحجام أكواب متعددة', 'تصميم مدمج يناسب أي مطبخ', 'تعمل بكبسولات نسبريسو فيرتو فقط'],
+    specs: [['العلامة', 'نسبريسو / ديلونجي'], ['النظام', 'كبسولات فيرتو'], ['الحالة', 'قريبًا']] },
   { id: 'v60-set', cat: 'gear', name: 'طقم V60 للسفر', en: 'V60 Travel Set', brand: 'لوتشي',
     sub: 'قمع V60 • إبريق سكب • مطحنة يدوية', price: 160, old: 230,
     img: 'v60-set', gallery: ['v60-set'], tags: [],
@@ -1595,7 +1607,7 @@ const FLAG = {
 /* ===================== الخادم (اختياري: إن غاب يعمل المتجر كما هو) ===================== */
 async function apiCall(path, body) {
   try {
-    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), body ? 15000 : 3000);
+    const ac = new AbortController(), tm = setTimeout(() => ac.abort(), body ? 15000 : 12000);
     const r = await fetch('/api/' + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: ac.signal } : { signal: ac.signal });
     clearTimeout(tm);
     const j = await r.json();
@@ -1604,9 +1616,20 @@ async function apiCall(path, body) {
     return j;
   } catch (e) { return null; }
 }
+let CATALOG_OK = false, CATALOG_BUSY = null;
 async function loadCatalog() {
-  const d = await apiCall('catalog');
-  if (!d || !d.items) return;
+  if (CATALOG_BUSY) return CATALOG_BUSY;
+  CATALOG_BUSY = (async () => {
+    let d = null;
+    // إعادة المحاولة: أول طلب قد يتأخر (تشغيل بارد / بعد جغرافيًا)، ولا نريد أن يسقط الدفع الإلكتروني بصمت.
+    for (let i = 0; i < 3 && !(d && d.items); i++) { if (i) await new Promise(r => setTimeout(r, 1200 * i)); d = await apiCall('catalog'); }
+    if (!d || !d.items) return;
+    CATALOG_OK = true;
+    await applyCatalog(d);
+  })();
+  try { await CATALOG_BUSY; } finally { CATALOG_BUSY = null; }
+}
+async function applyCatalog(d) {
   PAY_ON = !!d.pay;
   GID = typeof d.gid === 'string' ? d.gid : ''; ADDR_LOOKUP = !!d.addr_lookup;
   if (GID && !S.userLoaded) loadMe();
@@ -1741,9 +1764,9 @@ function wishBtn(id) {
 }
 function card(p, full) {
   const sale = disc(p), href = `#p-${p.id}`;
-  const img = `<a class="pc__img" href="${href}" data-nav tabindex="-1" aria-hidden="true"><img src="${IMGS(p.img)}" alt="" width="560" height="560" loading="lazy" decoding="async">${sale ? `<span class="pc__badge pc__badge--sale">وفّر ${sale}%</span>` : ''}</a>`;
+  const img = `<a class="pc__img" href="${href}" data-nav tabindex="-1" aria-hidden="true"><img src="${IMGS(p.img)}" alt="" width="560" height="560" loading="lazy" decoding="async">${p.soon ? '<span class="pc__badge" style="background:#1E3B31;color:#F3ECDD">قريبًا · SOON</span>' : sale ? `<span class="pc__badge pc__badge--sale">وفّر ${sale}%</span>` : ''}</a>`;
   const opts = !!p.variants;
-  const addBtn = opts
+  const addBtn = p.soon ? `<a class="add" href="${href}" data-nav aria-label="قريبًا: ${esc(p.name)}">${ico('arrowL', 19)}</a>` : opts
     ? `<a class="add" href="${href}" data-nav aria-label="اختر الخيارات: ${esc(p.name)}">${ico('bag', 19)}</a>`
     : `<button class="add" type="button" data-act="add" data-id="${p.id}" aria-label="أضف ${esc(p.name)} إلى السلة">${ico('bag', 19)}</button>`;
   if (full && p.origin) {
@@ -1755,7 +1778,7 @@ function card(p, full) {
         <p class="pc__sub">${esc(p.sub)}</p>
         <div class="specs3">${sp}</div>
         ${priceHTML(p)}
-        ${opts ? `<a class="btn btn--full" href="${href}" data-nav>اختر الخيارات</a>` : `<button class="btn btn--full" type="button" data-act="add" data-id="${p.id}">أضف إلى السلة ${ico('bag', 18)}</button>`}
+        ${p.soon ? `<a class="btn btn--full btn--line" href="${href}" data-nav>قريبًا · SOON</a>` : opts ? `<a class="btn btn--full" href="${href}" data-nav>اختر الخيارات</a>` : `<button class="btn btn--full" type="button" data-act="add" data-id="${p.id}">أضف إلى السلة ${ico('bag', 18)}</button>`}
       </div></article>`;
   }
   return `<article class="pc">${img}${wishBtn(p.id)}
@@ -2011,13 +2034,13 @@ function vPdp() {
         <div class="eyebrow">${cat.en}</div>
         <h1>${esc(p.name)}</h1>
         <p class="sub">${esc(whoLine)}</p>
-        <div class="priceline num"><b>${fmt(p.price)} ريال</b>${p.stock === 0 ? '<span class="off">نفدت الكمية</span>' : ''}${p.old ? `<s>${fmt(p.old)} ريال</s><span class="off">وفّر ${sale}%</span>` : ''}</div>
+        <div class="priceline num"><b>${fmt(p.price)} ريال</b>${p.soon ? '<span class="off">قريبًا</span>' : p.stock === 0 ? '<span class="off">نفدت الكمية</span>' : ''}${p.old ? `<s>${fmt(p.old)} ريال</s><span class="off">وفّر ${sale}%</span>` : ''}</div>
         <p class="desc">${esc(p.short || p.desc)}</p>${notes}
         ${variants}
         <div class="buy">
           <div class="qty" role="group" aria-label="الكمية"><button type="button" data-act="pq" data-d="-1" aria-label="إنقاص">${ico('minus', 18)}</button><output id="pqty" class="num">1</output><button type="button" data-act="pq" data-d="1" aria-label="زيادة">${ico('plus', 18)}</button></div>
-          <button class="btn" type="button" data-act="padd">أضف إلى السلة ${ico('bag', 18)}</button>
-          <button class="btn btn--line" type="button" data-act="pbuy">اشترِ الآن</button>
+          ${p.soon ? `<button class="btn" type="button" disabled>قريبًا · SOON</button>${WA ? `<a class="btn btn--line" href="https://wa.me/${WA}?text=${encodeURIComponent('أبغى أعرف متى تتوفر ' + p.name)}" target="_blank" rel="noopener noreferrer">اسألنا عن موعد التوفر</a>` : ''}` : `<button class="btn" type="button" data-act="padd">أضف إلى السلة ${ico('bag', 18)}</button>
+          <button class="btn btn--line" type="button" data-act="pbuy">اشترِ الآن</button>`}
           ${wishBtn(p.id).replace('class="wish"', 'class="wish" style="position:static;width:50px;height:50px;border:1px solid var(--line);background:transparent;color:var(--ink)"')}
         </div>
         <ul class="perks">
@@ -2373,7 +2396,7 @@ function render(keepScroll) {
   view.innerHTML = h;
   if (r.v === 'pdp') pdpSync();
   if (r.v === 'pay') mountPay();
-  if (r.v === 'checkout') prefillCheckout();
+  if (r.v === 'checkout') { prefillCheckout(); if (!CATALOG_OK) loadCatalog(); } // نعيد جلب حالة الدفع لو لم تصل سابقًا
   if (r.v === 'account') accountMounted();
   mountG();
   if (r.v === 'home') holoInit(); else HP.on = false;
@@ -2591,6 +2614,7 @@ document.addEventListener('submit', async e => {
       c: { name: cv('f-name', 80), phone: dig(cv('f-phone', 20)), ...ad, addr: addrLineC(ad), notes: cv('f-notes', 500, true) },
       items: t.lines.map(l => ({ id: l.id, name: (AR0.P.find(x => x.id === l.id) || l.p).name, v: l.v, qty: l.qty, price: l.p.price })), count: t.count, sub: t.sub, d: t.d, free: t.free, total: t.total
     };
+    if (!CATALOG_OK) await loadCatalog(); // لو فشل تحميل الإعدادات سابقًا، نعيد المحاولة قبل أن نقرر طريقة الدفع
     const pm = (document.querySelector('input[name="pm"]:checked') || {}).value;
     o.method = pm === 'card' && PAY_ON ? 'card' : 'wa';
     o.coupon = couponOk() ? cpCode() : ''; o.pct = o.d ? cpPct() : 0;
@@ -2674,6 +2698,12 @@ $('#footCats').innerHTML = footCatsHTML();
   } catch (e) { }
 })();
 if (CONFIG.freelanceNo) { const f = $('#footReg'); if (f) f.textContent = 'وثيقة العمل الحر: ' + clean(CONFIG.freelanceNo, 30); }
+(function socialInit() {
+  const U = { instagram: ['Instagram', 'https://instagram.com/'], tiktok: ['TikTok', 'https://www.tiktok.com/@'], snapchat: ['Snapchat', 'https://www.snapchat.com/add/'], x: ['X', 'https://x.com/'], youtube: ['YouTube', 'https://www.youtube.com/@'] };
+  const ul = $('#footSocial'); if (!ul) return;
+  const items = Object.keys(U).map(k => { const h = String((CONFIG.social || {})[k] || '').trim().replace(/^@/, ''); return /^[A-Za-z0-9._-]{2,40}$/.test(h) ? `<li><a href="${U[k][1]}${h}" target="_blank" rel="noopener noreferrer" dir="ltr">${U[k][0]}</a></li>` : ''; }).join('');
+  if (items) { ul.innerHTML = items; ul.hidden = false; }
+})();
 chatInit(); updateBadge();
 route(location.hash.slice(1) || 'home');
 if (isEn()) trTree(document.body);

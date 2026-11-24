@@ -4,7 +4,7 @@ export const CATALOG = {
   "name": "ماكينة نسبريسو فيرتو بوب من ديلونجي",
   "en": "Nespresso Vertuo Pop by DeLonghi",
   "cat": "gear",
-  "price": 649,
+  "price": 449,
   "old": 0,
   "img": "nespresso-pop",
   "brand": "نسبريسو",

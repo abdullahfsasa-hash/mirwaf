@@ -19,7 +19,7 @@ const DDL = [
 const ALTERS = [
   'ALTER TABLE orders ADD COLUMN account_id INTEGER', 'ALTER TABLE orders ADD COLUMN addr_short TEXT', 'ALTER TABLE orders ADD COLUMN addr_building TEXT',
   'ALTER TABLE orders ADD COLUMN addr_street TEXT', 'ALTER TABLE orders ADD COLUMN addr_district TEXT', 'ALTER TABLE orders ADD COLUMN addr_post TEXT',
-  'ALTER TABLE orders ADD COLUMN addr_extra TEXT', 'ALTER TABLE orders ADD COLUMN addr_verified INTEGER NOT NULL DEFAULT 0'
+  'ALTER TABLE orders ADD COLUMN addr_extra TEXT', 'ALTER TABLE orders ADD COLUMN addr_verified INTEGER NOT NULL DEFAULT 0', 'ALTER TABLE orders ADD COLUMN email TEXT'
 ];
 export async function ensureAccounts(env) {
   await env.DB.batch(DDL.map(s => env.DB.prepare(s)));

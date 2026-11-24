@@ -8,18 +8,18 @@ export const normShort = s => dig(String(s || '')).toUpperCase().replace(/[\s-]/
 export const validShort = s => /^[A-Z]{4}\d{4}$/.test(s);
 
 // يتحقق من حقول العنوان القادمة من المتجر ويُرجع { ok, a } أو { ok:false, field }.
-// المبنى 4 أرقام، الرمز البريدي 5 أرقام، الرقم الإضافي 4 أرقام، والمختصر (اختياري) 4 حروف + 4 أرقام.
+// المبنى 4 أرقام، الرمز البريدي 5 أرقام، الرقم الإضافي 4 أرقام، والمختصر (إلزامي) 4 حروف + 4 أرقام.
 export function validateAddress(c) {
   const city = clean(c.city, 60), district = clean(c.district, 60), street = clean(c.street, 80);
   const bno = dig(clean(c.bno, 8)).replace(/\s/g, ''), post = dig(clean(c.post, 8)).replace(/\s/g, ''), extra = dig(clean(c.extra, 8)).replace(/\s/g, '');
   const short = normShort(clean(c.short, 20));
+  if (!validShort(short)) return { ok: false, field: 'short' };
   if (city.length < 2) return { ok: false, field: 'city' };
   if (district.length < 2) return { ok: false, field: 'district' };
   if (street.length < 2) return { ok: false, field: 'street' };
   if (!/^\d{4}$/.test(bno)) return { ok: false, field: 'bno' };
   if (!/^\d{5}$/.test(post)) return { ok: false, field: 'post' };
   if (!/^\d{4}$/.test(extra)) return { ok: false, field: 'extra' };
-  if (short && !validShort(short)) return { ok: false, field: 'short' };
   return { ok: true, a: { city, district, street, bno, post, extra, short } };
 }
 

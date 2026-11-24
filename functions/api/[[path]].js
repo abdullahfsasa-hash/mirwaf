@@ -4,6 +4,7 @@ import { init, effectiveCatalog, findCoupon, getFreeFrom, getSetting, setSetting
 import { streamOn, createProduct, findProductByName, createPaymentLink, getInvoice, verifyWebhook } from '../_lib/stream.js';
 import { accountRoute, addressLookupRoute, accountsOn, currentAccount, markPhoneUsed } from '../_lib/accounts.js';
 import { validateAddress, addrLine, lookupShort, lookupOn } from '../_lib/address.js';
+import { mailOn, sendOrderEmail, validEmail } from '../_lib/mail.js';
 import { adminRoute, publicStoreSettings } from '../_lib/admin_api.js';
 import { isAdmin, adminEnabled, makeCookie, clearCookie, loginAttempt, revokeSessions } from '../_lib/auth.js';
 
@@ -102,18 +103,17 @@ async function createOrder({ request, env, waitUntil }) {
 
   const name = clean(b.c.name, 80), phone = dig(clean(b.c.phone, 20)), notes = clean(b.c.notes, 500, true);
   let av = validateAddress(b.c); // العنوان الوطني: مبنى 4 + بريدي 5 + إضافي 4 + حي + شارع + مدينة
-  // توافق مؤقت: صفحات المتجر القديمة المخزّنة عند الزبائن ترسل عنوانًا نصيًا فقط، فنقبله (بدون حقول وطنية) بدل رفض الطلب.
-  const legacyAddr = clean(b.c.addr, 200), legacyCity = clean(b.c.city, 60);
-  const noStructured = !['district', 'street', 'bno', 'post', 'extra', 'short'].some(k => String(b.c[k] || '').trim());
-  if (!av.ok && noStructured && legacyAddr.length >= 4 && legacyCity.length >= 2) av = { ok: true, a: { city: legacyCity, district: '', street: '', bno: '', post: '', extra: '', short: '' }, legacy: legacyAddr };
+  const emailIn = clean(b.c.email, 120).toLowerCase();
+  if (emailIn && !validEmail(emailIn)) return J({ ok: false, error: 'invalid', field: 'email' }, 400);
   if (name.length < 3 || !av.ok || !/^\+?\d{9,15}$/.test(phone.replace(/[\s-]/g, ''))) return J({ ok: false, error: 'invalid', field: av.ok ? '' : av.field }, 400);
-  const na = av.a, city = na.city, address = av.legacy || addrLine(na);
+  const na = av.a, city = na.city, address = addrLine(na);
   const cid = String(b.cid || '');
   if (!/^[A-Za-z0-9_-]{8,64}$/.test(cid)) return J({ ok: false, error: 'invalid' }, 400);
   const method = b.method === 'card' ? 'card' : 'wa', lang = b.lang === 'en' ? 'en' : 'ar';
   if (b.items.length < 1 || b.items.length > 30) return J({ ok: false, error: 'invalid' }, 400);
 
   const acc = await currentAccount(request, env); // الحساب من الكوكي فقط
+  const email = emailIn || (acc && acc.email && validEmail(String(acc.email).toLowerCase()) ? String(acc.email).toLowerCase() : '');
   let addrVerified = 0;
   if (na.short && lookupOn(env)) { const lk = await lookupShort(env, na.short); if (lk.ok && lk.found && lk.a.bno === na.bno && lk.a.post === na.post) addrVerified = 1; }
   const cat = await effectiveCatalog(env);
@@ -159,8 +159,8 @@ async function createOrder({ request, env, waitUntil }) {
   for (let t = 0; t < 6 && !saved; t++) {
     ref = 'MW-' + day + '-' + [...crypto.getRandomValues(new Uint8Array(3))].map(x => x.toString(36).toUpperCase()).join('').replace(/[^A-Z0-9]/g, '0').padEnd(4, '0').slice(0, 4);
     try {
-      await env.DB.prepare('INSERT INTO orders (ref,cid,created_at,updated_at,name,phone,city,address,notes,items,subtotal,discount,free_shipping,total,coupon,coupon_pct,lang,method,ip_hash,account_id,addr_short,addr_building,addr_street,addr_district,addr_post,addr_extra,addr_verified) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .bind(ref, cid, now, now, name, phone, city, address, notes, JSON.stringify(items), sub, d, free, total, cp ? cp.code : '', cp ? cp.pct : 0, lang, method, ih, acc ? acc.id : null, na.short, na.bno, na.street, na.district, na.post, na.extra, addrVerified).run();
+      await env.DB.prepare('INSERT INTO orders (ref,cid,created_at,updated_at,name,phone,city,address,notes,items,subtotal,discount,free_shipping,total,coupon,coupon_pct,lang,method,ip_hash,account_id,addr_short,addr_building,addr_street,addr_district,addr_post,addr_extra,addr_verified,email) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .bind(ref, cid, now, now, name, phone, city, address, notes, JSON.stringify(items), sub, d, free, total, cp ? cp.code : '', cp ? cp.pct : 0, lang, method, ih, acc ? acc.id : null, na.short, na.bno, na.street, na.district, na.post, na.extra, addrVerified, email).run();
       saved = true;
     } catch (e) {
       if (!/UNIQUE/i.test(String(e && e.message || e))) { for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run(); throw e; }
@@ -170,6 +170,7 @@ async function createOrder({ request, env, waitUntil }) {
   if (!saved) { for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run(); return J({ ok: false, error: 'server' }, 500); }
   if (cp) await env.DB.prepare('UPDATE coupons SET used = used + 1 WHERE code = ?').bind(cp.code).run();
   if (acc) { try { await markPhoneUsed(env, acc, phone); } catch (e) { } }
+  if (email && mailOn(env)) waitUntil(sendOrderEmail(env, { ref, name, email, lang, method, items, sub, d, free: !!free, total, coupon: cp ? cp.code : '', pct: cp ? cp.pct : 0, address }).catch(() => { }));
   return J({ ok: true, ref, at: now, sub, d, pct: cp ? cp.pct : 0, free: !!free, total, coupon: cp ? cp.code : '' });
 }
 

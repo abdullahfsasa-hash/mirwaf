@@ -419,6 +419,8 @@ h1,h2,h3,h4{font-family:var(--font-display);font-weight:500;text-wrap:balance;li
 .sw button{width:36px;height:36px;border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 0 1px var(--line);position:relative;transition:box-shadow .2s,transform .2s}
 .sw button:hover{transform:scale(1.08)}
 .sw button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+.sw button[data-out]{opacity:.4}
+.sw button[data-out]::after{content:"";position:absolute;inset:-2px;border-radius:50%;background:linear-gradient(to top right,transparent calc(50% - 1.5px),var(--ink) calc(50% - 1.5px),var(--ink) calc(50% + 1.5px),transparent calc(50% + 1.5px))}
 .buy{display:flex;gap:12px;align-items:stretch;flex-wrap:wrap;margin-bottom:22px}
 .qty{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;height:50px}
 .qty button{width:44px;height:100%;display:grid;place-items:center;border-radius:999px}
@@ -1651,12 +1653,12 @@ async function applyCatalog(d) {
   });
   AR0.P.forEach(p => {
     const o = d.items[p.id]; if (!o) return;
-    p.price = o.price; p.old = o.old; p.stock = o.stock; p.hidden = !!o.hidden; p.st = o.st || ''; p.bg = /^#[0-9a-f]{6}$/i.test(o.bg || '') ? o.bg : '';
+    p.price = o.price; p.old = o.old; p.stock = o.stock; p.hidden = !!o.hidden; p.st = o.st || ''; p.vs = o.vs && typeof o.vs === 'object' ? o.vs : null; p.bg = /^#[0-9a-f]{6}$/i.test(o.bg || '') ? o.bg : '';
     if (Array.isArray(o.imgs) && o.imgs.length && o.imgs.every(u => typeof u === 'string' && /^(https:\/\/\S+|[A-Za-z0-9_-]{1,60})$/.test(u))) { p.img = o.imgs[0]; p.gallery = o.imgs.slice(); }
   });
   applyData();
   for (let i = P.length - 1; i >= 0; i--) { const a = AR0.P.find(x => x.id === P[i].id); if (a && a.hidden) P.splice(i, 1); }
-  S.cart = S.cart.filter(i => { const p = byId(i.id); return p && canBuy(p); }); saveCart(); updateBadge();
+  S.cart = S.cart.filter(i => { const p = byId(i.id); return p && canBuy(p) && !(i.v && vState(p, i.v)); }); saveCart(); updateBadge();
   if (S.coupon) { const r = await apiCall('coupon', { code: S.coupon }); if (r && r.ok) S.cp = { code: r.code, pct: r.pct }; else if (r) { S.coupon = ''; S.cp = null; saveCart(); } }
   if (S.open === 'cart') renderCart();
   if (S.r && S.r.v !== 'done' && (S.r.v !== 'pay' || (!S.payFail && !$('#mysr')))) render(true);
@@ -1692,6 +1694,7 @@ function totals() {
 }
 function cartAdd(id, v, qty = 1, quiet) {
   const sp = byId(id); if (sp && !canBuy(sp)) { toast(isSoon(sp) ? 'هذا المنتج سيتوفر قريبًا.' : 'هذا المنتج نفد من المخزون.'); return false; }
+  if (sp && v && vState(sp, v)) { toast(vState(sp, v) === 'soon' ? 'هذا الخيار سيتوفر قريبًا.' : 'هذا الخيار نفد من المخزون.'); return false; }
   const k = id + '|' + (v || '');
   const ex = S.cart.find(i => ckey(i) === k);
   if (ex) ex.qty = Math.min(20, ex.qty + qty); else S.cart.push({ id, v: v || '', qty });
@@ -1773,7 +1776,11 @@ async function applyCoupon(code) {
 function priceHTML(p) {
   return `<div class="price num"><b>${fmt(p.price)}</b><small>ريال</small>${p.old ? `<s>${fmt(p.old)}</s>` : ''}</div>`;
 }
-const soldOut = p => p.st === 'soldout' || p.stock === 0;
+// حالة خيار واحد (لون / مقاس): '' متوفر، 'soon' قريبًا، 'soldout' نفد. المصدر: مخزون الخيار اللي يحدده الأدمن.
+const vState = (p, k) => { const x = p.vs && p.vs[k]; return !x ? '' : x.st === 'soon' || x.st === 'soldout' ? x.st : x.s === 0 ? 'soldout' : ''; };
+const vLabel = (p, k) => vState(p, k) === 'soon' ? 'قريبًا' : vState(p, k) ? 'نفد' : '';
+const allVarOut = p => !!(p.variants && p.variants.length && p.variants.every(v => vState(p, v.k)));
+const soldOut = p => p.st === 'soldout' || p.stock === 0 || allVarOut(p);
 const isSoon = p => p.st === 'soon' || !!p.soon;
 const canBuy = p => !soldOut(p) && !isSoon(p);
 const stateLabel = p => isSoon(p) ? 'قريبًا' : soldOut(p) ? 'نفدت الكمية' : '';
@@ -2093,6 +2100,13 @@ function pdpSync() {
   const vn = $('#vname'); if (vn) vn.textContent = st.vi >= 0 ? (p.variants[st.vi].n || p.variants[st.vi].k) : `اختر ${p.vlabel}`;
   const q = $('#pqty'); if (q) q.textContent = st.qty;
   const m = $('#vmsg'); if (m) m.textContent = '';
+  if (p.variants) {
+    $$('#vopt .sw button').forEach((b, i) => { const l = vLabel(p, p.variants[i].k), n = p.variants[i].n || p.variants[i].k; if (l) { b.setAttribute('data-out', '1'); b.title = n + ' — ' + l; b.setAttribute('aria-label', b.title); } else { b.removeAttribute('data-out'); b.title = n; } });
+    const cur = st.vi >= 0 ? p.variants[st.vi] : null, out = cur ? vLabel(p, cur.k) : '';
+    if (vn && cur && out) vn.textContent = (cur.n || cur.k) + ' — ' + out;
+    if (m && out) m.textContent = out === 'قريبًا' ? 'هذا الخيار سيتوفر قريبًا، اختر خيارًا ثانيًا.' : 'هذا الخيار نفد، اختر خيارًا ثانيًا.';
+    if (canBuy(p)) $$('[data-act="padd"],[data-act="pbuy"]').forEach(b => { b.disabled = !!out; });
+  }
 }
 function pdpAdd(buy) {
   const st = S.pdp, p = byId(st.id);
@@ -2406,7 +2420,7 @@ function route(tok) {
   S.r = parse(S.tok);
   closePanels(true);
   S.shop = { cat: S.r.cat || null, pill: 'all', sort: 'featured' };
-  S.pdp = S.r.v === 'pdp' ? { id: S.r.id, vi: (byId(S.r.id).variants ? 0 : -1), gi: 0, qty: 1, vimg: null } : null;
+  S.pdp = S.r.v === 'pdp' ? { id: S.r.id, vi: (byId(S.r.id).variants ? Math.max(0, byId(S.r.id).variants.findIndex(v => !vState(byId(S.r.id), v.k))) : -1), gi: 0, qty: 1, vimg: null } : null;
   render();
   window.scrollTo(0, 0);
 }

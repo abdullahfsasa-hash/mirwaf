@@ -1,7 +1,7 @@
 // واجهة برمجية للوحة التحكم (الطلبات، المنتجات، العملاء، الكوبونات، الإعدادات، النسخ الاحتياطي).
 // يُستدعى من الموجّه بعد التحقق من الجلسة وترويسة CSRF. يرجع null للمسارات التي لا يعالجها.
 import { J, clean, dig, readJson } from './util.js';
-import { effectiveCatalog, getSetting, setSetting, getFreeFrom } from './db.js';
+import { effectiveCatalog, getSetting, setSetting, getFreeFrom, takeVariant, giveVariant } from './db.js';
 import { aramexCreate, carriersOn } from './carriers.js';
 import { lookupOn } from './address.js';
 
@@ -172,7 +172,7 @@ async function applyStatus(env, ref, status) {
   const r = await env.DB.prepare('UPDATE orders SET status = ?, updated_at = ?, shipped_at = CASE WHEN ? = \'shipped\' THEN ? ELSE shipped_at END WHERE ref = ? AND status = ?').bind(status, now, status, now, ref, o.status).run();
   if (!r.meta || r.meta.changes !== 1) return { ok: false, error: 'conflict' };
   if (status === 'cancelled') {
-    for (const it of parseItems(o.items)) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').bind(Number(it.qty) || 0, String(it.id)).run();
+    for (const it of parseItems(o.items)) { await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').bind(Number(it.qty) || 0, String(it.id)).run(); if (it.v) await giveVariant(env, String(it.id), String(it.v), Number(it.qty) || 0); }
     if (o.coupon) await env.DB.prepare('UPDATE coupons SET used = MAX(used - 1, 0) WHERE code = ?').bind(o.coupon).run();
   }
   const LBL = { new: 'جديد', confirmed: 'مؤكد', shipped: 'تم الشحن', done: 'مكتمل', cancelled: 'ملغي' };
@@ -215,8 +215,9 @@ async function orderItems(request, env, ref) {
   if (o.pay_verified) return J({ ok: false, error: 'paid_locked' }, 409);
   if (b.items.length < 1 || b.items.length > 30) return J({ ok: false, error: 'invalid' }, 400);
   const cat = await effectiveCatalog(env), old = parseItems(o.items);
-  const items = [], want = {}, had = {};
-  for (const it of old) had[it.id] = (had[it.id] || 0) + (Number(it.qty) || 0);
+  const items = [], want = {}, had = {}, wantV = {}, hadV = {};
+  const vk = (id, v) => id + '\u0001' + v;
+  for (const it of old) { had[it.id] = (had[it.id] || 0) + (Number(it.qty) || 0); if (it.v) hadV[vk(it.id, it.v)] = (hadV[vk(it.id, it.v)] || 0) + (Number(it.qty) || 0); }
   for (const it of b.items) {
     const id = String(it && it.id || ''), qty = int(it && it.qty, 1, 50), v = String(it && it.v || '');
     if (!qty || !id) return J({ ok: false, error: 'invalid' }, 400);
@@ -228,9 +229,23 @@ async function orderItems(request, env, ref) {
     if (it.price != null && it.price !== '') { const pr = int(it.price, 0, 100000); if (pr == null) return J({ ok: false, error: 'invalid' }, 400); price = pr; }
     items.push({ id, name: prev ? prev.name : p.name, v, qty, price });
     want[id] = (want[id] || 0) + qty;
+    if (v) wantV[vk(id, v)] = (wantV[vk(id, v)] || 0) + qty;
   }
   // مخزون: نحجز الزيادة ذرّيًا، ونُرجع النقص.
-  const taken = [];
+  const taken = [], takenV = [];
+  const undoAll = async () => {
+    for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run();
+    for (const [pid, pv, tq] of takenV) await (tq > 0 ? giveVariant(env, pid, pv, tq) : takeVariant(env, pid, pv, -tq)); // tq موجب = كنا حجزنا → نرجّع، سالب = كنا رجّعنا → نحجز
+  };
+  for (const key of new Set([...Object.keys(wantV), ...Object.keys(hadV)])) {
+    const [vid, vv] = key.split('\u0001'), delta = (wantV[key] || 0) - (hadV[key] || 0);
+    if (!delta) continue;
+    if (delta > 0) {
+      const r = await takeVariant(env, vid, vv, delta);
+      if (r === 'out') { await undoAll(); return J({ ok: false, error: 'stock', id: vid, v: vv }, 409); }
+      if (r === 'taken') takenV.push([vid, vv, delta]);
+    } else { await giveVariant(env, vid, vv, -delta); takenV.push([vid, vv, delta]); }
+  }
   const ids = new Set([...Object.keys(want), ...Object.keys(had)]);
   for (const id of ids) {
     const delta = (want[id] || 0) - (had[id] || 0);
@@ -239,7 +254,7 @@ async function orderItems(request, env, ref) {
       const r = await env.DB.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock IS NOT NULL AND stock >= ?').bind(delta, id, delta).run();
       if (r.meta && r.meta.changes === 1) { taken.push([id, delta]); continue; }
       const row = await env.DB.prepare('SELECT stock FROM products WHERE id = ?').bind(id).first();
-      if (row && row.stock != null) { for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run(); return J({ ok: false, error: 'stock', id }, 409); }
+      if (row && row.stock != null) { await undoAll(); return J({ ok: false, error: 'stock', id }, 409); }
     } else {
       await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').bind(-delta, id).run();
       taken.push([id, delta]);
@@ -327,7 +342,7 @@ async function productsFull(env, withSold) {
     const e = p.extra || {}, m = meta[p.id] || {};
     return {
       id: p.id, name: p.name, en: p.en || '', cat: p.cat, brand: p.brand || '', img: p.ovImgs && p.ovImgs.length ? p.ovImgs[0] : (p.img || ''), imgs: Array.isArray(e.imgs) && e.imgs.length ? e.imgs : (p.ovImgs && p.ovImgs.length ? p.ovImgs : (p.img ? [p.img] : [])), img_override: p.ovImgs && p.ovImgs.length ? 1 : 0, bg: p.bg || '', status: p.status || '',
-      price: p.price, old: p.old || 0, stock: p.stock, hidden: p.hidden, custom: p.custom ? 1 : 0, variants: p.variants || null,
+      price: p.price, old: p.old || 0, stock: p.stock, hidden: p.hidden, custom: p.custom ? 1 : 0, variants: p.variants || null, vstock: p.vs || {},
       sub: e.sub || '', short: e.short || '', desc: e.desc || '', sku: m.sku || '', cost: m.cost == null ? null : m.cost, sold: sold[p.id] || 0
     };
   });
@@ -387,6 +402,21 @@ async function productUpdate(request, env, id) {
   if (v.ovImgs) { if (v.ovImgs.length) meta.imgs = v.ovImgs; else delete meta.imgs; }
   await env.DB.prepare('UPDATE products SET meta = ? WHERE id = ?').bind(JSON.stringify(meta), id).run();
   if (custom) await env.DB.prepare('UPDATE products SET extra = ? WHERE id = ?').bind(JSON.stringify(v.extra), id).run();
+  // مخزون كل خيار (لون / مقاس): نتحقق من الكل قبل الكتابة
+  const pv = cat[id].variants;
+  if (pv && b.vstock && typeof b.vstock === 'object') {
+    const rows = [];
+    for (const [name, x] of Object.entries(b.vstock)) {
+      if (!pv.includes(name) || !x || typeof x !== 'object') return J({ ok: false, error: 'invalid', field: 'vstock' }, 400);
+      const st = x.stock === '' || x.stock == null ? null : int(x.stock, 0, 100000);
+      if (x.stock !== '' && x.stock != null && st == null) return J({ ok: false, error: 'invalid', field: 'vstock' }, 400);
+      rows.push([name, st, x.status === 'soon' || x.status === 'soldout' ? x.status : '']);
+    }
+    for (const [name, st, status] of rows) {
+      if (st == null && !status) await env.DB.prepare('DELETE FROM variant_stock WHERE pid = ? AND v = ?').bind(id, name).run();
+      else await env.DB.prepare('INSERT INTO variant_stock (pid, v, stock, status) VALUES (?,?,?,?) ON CONFLICT(pid, v) DO UPDATE SET stock = excluded.stock, status = excluded.status').bind(id, name, st, status).run();
+    }
+  }
   return J({ ok: true });
 }
 

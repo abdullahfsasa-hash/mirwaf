@@ -1,6 +1,6 @@
 // واجهة المتجر + لوحة الأدمن. مسار واحد يوزّع الطلبات: /api/<...>
 import { J, clean, dig, ipHash, sameOrigin, readJson } from '../_lib/util.js';
-import { init, effectiveCatalog, findCoupon, getFreeFrom, getSetting, setSetting } from '../_lib/db.js';
+import { init, effectiveCatalog, findCoupon, getFreeFrom, getSetting, setSetting, variantBlocked, takeVariant, giveVariant } from '../_lib/db.js';
 import { streamOn, createProduct, findProductByName, createPaymentLink, getInvoice, verifyWebhook } from '../_lib/stream.js';
 import { accountRoute, addressLookupRoute, accountsOn, currentAccount, markPhoneUsed } from '../_lib/accounts.js';
 import { validateAddress, addrLine, lookupShort, lookupOn } from '../_lib/address.js';
@@ -82,7 +82,7 @@ async function catalog(env) {
   const cat = await effectiveCatalog(env);
   const items = {}, extra = [];
   for (const [id, p] of Object.entries(cat)) {
-    items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden, bg: p.bg || '', st: p.status || '', ...(p.ovImgs && p.ovImgs.length ? { imgs: p.ovImgs } : {}) };
+    items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden, bg: p.bg || '', st: p.status || '', ...(p.vs ? { vs: Object.fromEntries(Object.entries(p.vs).map(([k, x]) => [k, { s: x.stock, st: x.status }])) } : {}), ...(p.ovImgs && p.ovImgs.length ? { imgs: p.ovImgs } : {}) };
     if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, short: e.short || '', desc: e.desc || '' }); }
   }
   return J({ ok: true, pay: streamOn(env) && (await getSetting(env, 'pay_card_on', '1')) !== '0', freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: lookupOn(env) }, 200, { 'cache-control': 'public, max-age=30' });
@@ -117,7 +117,7 @@ async function createOrder({ request, env, waitUntil }) {
   let addrVerified = 0;
   if (na.short && lookupOn(env)) { const lk = await lookupShort(env, na.short); if (lk.ok && lk.found && lk.a.bno === na.bno && lk.a.post === na.post) addrVerified = 1; }
   const cat = await effectiveCatalog(env);
-  const items = [], want = {};
+  const items = [], want = {}, wantV = {};
   for (const it of b.items) {
     const p = it && typeof it.id === 'string' && Object.prototype.hasOwnProperty.call(cat, it.id) ? cat[it.id] : null;
     const qty = int(it && it.qty, 1, 20);
@@ -127,8 +127,10 @@ async function createOrder({ request, env, waitUntil }) {
     if (p.variants) { v = String(it.v || ''); if (!p.variants.includes(v)) return J({ ok: false, error: 'invalid' }, 400); }
     items.push({ id: it.id, name: p.name, v, qty, price: p.price });
     want[it.id] = (want[it.id] || 0) + qty;
+    if (v) { const wk = it.id + '\u0001' + v; wantV[wk] = wantV[wk] || { id: it.id, v, q: 0 }; wantV[wk].q += qty; }
   }
   for (const [id, q] of Object.entries(want)) if (cat[id].stock != null && cat[id].stock < q) return J({ ok: false, error: 'stock', id }, 409);
+  for (const w of Object.values(wantV)) if (variantBlocked(cat[w.id], w.v, w.q)) return J({ ok: false, error: 'stock', id: w.id, v: w.v }, 409);
 
   const sub = items.reduce((s, i) => s + i.price * i.qty, 0);
   const cp = b.coupon ? await findCoupon(env, b.coupon) : null;
@@ -144,14 +146,20 @@ async function createOrder({ request, env, waitUntil }) {
   if (rl && rl.b >= RATE_ALL) return J({ ok: false, error: 'busy' }, 503, { 'retry-after': '600' });
 
   // حجز المخزون
-  const taken = [];
+  const taken = [], takenV = [];
+  const undo = async () => {
+    for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run();
+    for (const [pid, v, q] of takenV) await giveVariant(env, pid, v, q);
+  };
+  for (const w of Object.values(wantV)) {
+    const r = await takeVariant(env, w.id, w.v, w.q);
+    if (r === 'out') { await undo(); return J({ ok: false, error: 'stock', id: w.id, v: w.v }, 409); }
+    if (r === 'taken') takenV.push([w.id, w.v, w.q]);
+  }
   for (const [id, q] of Object.entries(want)) {
     if (cat[id].stock == null) continue;
     const r = await env.DB.prepare('UPDATE products SET stock = stock - ? WHERE id = ? AND stock >= ?').bind(q, id, q).run();
-    if (!r.meta || r.meta.changes !== 1) {
-      for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run();
-      return J({ ok: false, error: 'stock', id }, 409);
-    }
+    if (!r.meta || r.meta.changes !== 1) { await undo(); return J({ ok: false, error: 'stock', id }, 409); }
     taken.push([id, q]);
   }
 
@@ -164,11 +172,11 @@ async function createOrder({ request, env, waitUntil }) {
         .bind(ref, cid, now, now, name, phone, city, address, notes, JSON.stringify(items), sub, d, free, total, cp ? cp.code : '', cp ? cp.pct : 0, lang, method, ih, acc ? acc.id : null, na.short, na.bno, na.street, na.district, na.post, na.extra, addrVerified, email).run();
       saved = true;
     } catch (e) {
-      if (!/UNIQUE/i.test(String(e && e.message || e))) { for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run(); throw e; }
+      if (!/UNIQUE/i.test(String(e && e.message || e))) { await undo(); throw e; }
       if (/cid/i.test(String(e.message))) { const again = await env.DB.prepare('SELECT * FROM orders WHERE cid = ?').bind(cid).first(); if (again) return J(pubOrder(again)); }
     }
   }
-  if (!saved) { for (const [tid, tq] of taken) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ?').bind(tq, tid).run(); return J({ ok: false, error: 'server' }, 500); }
+  if (!saved) { await undo(); return J({ ok: false, error: 'server' }, 500); }
   if (cp) await env.DB.prepare('UPDATE coupons SET used = used + 1 WHERE code = ?').bind(cp.code).run();
   if (acc) { try { await markPhoneUsed(env, acc, phone); } catch (e) { } }
   if (email && mailOn(env)) waitUntil(sendOrderEmail(env, { ref, name, email, lang, method, items, sub, d, free: !!free, total, coupon: cp ? cp.code : '', pct: cp ? cp.pct : 0, address }).catch(() => { }));
@@ -326,7 +334,7 @@ async function orderUpdate(request, env, ref, action) {
   if (!STATUSES.includes(b.status)) return J({ ok: false, error: 'invalid' }, 400);
   if (o.status === 'cancelled' && b.status !== 'cancelled') return J({ ok: false, error: 'cancelled' }, 409);
   if (b.status === 'cancelled' && o.status !== 'cancelled') {
-    for (const it of parseItems(o.items)) await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').bind(Number(it.qty) || 0, String(it.id)).run();
+    for (const it of parseItems(o.items)) { await env.DB.prepare('UPDATE products SET stock = stock + ? WHERE id = ? AND stock IS NOT NULL').bind(Number(it.qty) || 0, String(it.id)).run(); if (it.v) await giveVariant(env, String(it.id), String(it.v), Number(it.qty) || 0); }
   }
   await env.DB.prepare('UPDATE orders SET status = ?, updated_at = ? WHERE ref = ?').bind(b.status, Date.now(), ref).run();
   return J({ ok: true });

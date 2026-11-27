@@ -11,6 +11,7 @@ const DDL = [
   `CREATE INDEX IF NOT EXISTS orders_created ON orders (created_at)`,
   `CREATE INDEX IF NOT EXISTS orders_ip ON orders (ip_hash, created_at)`,
   `CREATE TABLE IF NOT EXISTS products (id TEXT PRIMARY KEY, price INTEGER, old_price INTEGER, stock INTEGER, hidden INTEGER DEFAULT 0, extra TEXT)`,
+  `CREATE TABLE IF NOT EXISTS variant_stock (pid TEXT NOT NULL, v TEXT NOT NULL, stock INTEGER, status TEXT NOT NULL DEFAULT '', PRIMARY KEY (pid, v))`,
   `CREATE TABLE IF NOT EXISTS coupons (code TEXT PRIMARY KEY, pct INTEGER NOT NULL, active INTEGER NOT NULL DEFAULT 1, expires INTEGER, used INTEGER NOT NULL DEFAULT 0, note TEXT)`,
   `CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`,
   `CREATE TABLE IF NOT EXISTS admin_fail (ip_hash TEXT, ts INTEGER)`
@@ -60,8 +61,31 @@ export async function effectiveCatalog(env) {
     x.status = m.status === 'soon' || m.status === 'soldout' ? m.status : '';
     if (!x.custom && Array.isArray(m.imgs) && m.imgs.length) { x.ovImgs = m.imgs.filter(u => typeof u === 'string'); }
   }
+  // مخزون كل خيار (لون / مقاس): x.vs[اسم الخيار] = { stock: رقم أو null (غير محدود), status: '' | 'soon' | 'soldout' }
+  const { results: vrows } = await env.DB.prepare('SELECT pid, v, stock, status FROM variant_stock').all();
+  for (const r of vrows) {
+    const x = out[r.pid];
+    if (!x || !x.variants || !x.variants.includes(r.v)) continue;
+    (x.vs = x.vs || {})[r.v] = { stock: r.stock == null ? null : r.stock, status: r.status === 'soon' || r.status === 'soldout' ? r.status : '' };
+  }
   return out;
 }
+
+// هل الخيار قابل للشراء الآن؟ (يُستخدم بالسيرفر فقط عند إنشاء الطلب)
+export const variantBlocked = (p, v, qty) => {
+  const s = p.vs && p.vs[v];
+  return !!s && (s.status === 'soon' || s.status === 'soldout' || (s.stock != null && s.stock < qty));
+};
+
+// حجز كمية من خيار بشكل ذرّي. يرجع 'taken' (نقصنا المخزون)، 'free' (الخيار غير محدود)، أو 'out' (ما يكفي).
+export async function takeVariant(env, pid, v, q) {
+  const r = await env.DB.prepare('UPDATE variant_stock SET stock = stock - ? WHERE pid = ? AND v = ? AND stock IS NOT NULL AND stock >= ? AND status = \'\'').bind(q, pid, v, q).run();
+  if (r.meta && r.meta.changes === 1) return 'taken';
+  const row = await env.DB.prepare('SELECT stock, status FROM variant_stock WHERE pid = ? AND v = ?').bind(pid, v).first();
+  if (row && (row.status || (row.stock != null && row.stock < q))) return 'out';
+  return 'free';
+}
+export const giveVariant = (env, pid, v, q) => env.DB.prepare('UPDATE variant_stock SET stock = stock + ? WHERE pid = ? AND v = ? AND stock IS NOT NULL').bind(q, pid, v).run();
 
 // تحقق من كود الخصم: يرجع { code, pct } أو null.
 export async function findCoupon(env, code) {

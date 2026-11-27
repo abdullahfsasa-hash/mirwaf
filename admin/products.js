@@ -32,7 +32,7 @@
           h('td', {}, h('div', { class: 'pname' }, h('img', { class: 'thumb', src: A.img(p.img), alt: '', loading: 'lazy' }), h('div', {}, h('div', {}, p.name), h('div', { class: 'row', style: 'gap:4px' }, p.custom ? h('span', { class: 'badge' }, 'مخصّص') : null, p.hidden ? h('span', { class: 'badge b-bad' }, 'مخفي') : null, p.status === 'soon' ? h('span', { class: 'badge b-warn' }, 'قريبًا') : p.status === 'soldout' ? h('span', { class: 'badge b-bad' }, 'نفد (يدويًا)') : null, p.old > p.price ? h('span', { class: 'badge b-ok' }, 'خصم') : null)))),
           h('td', { class: 'hide-m' }, A.CATS[p.cat] || p.cat),
           h('td', { class: 'num' }, nf(p.price), p.old > p.price ? h('div', { class: 'sm mut', style: 'text-decoration:line-through' }, nf(p.old)) : null),
-          h('td', {}, p.stock == null ? h('span', { class: 'mut' }, '∞') : h('span', { class: 'badge ' + (p.stock === 0 ? 'b-bad' : p.stock <= 3 ? 'b-warn' : '') }, p.stock === 0 ? 'نفد' : nf(p.stock))),
+          h('td', {}, p.variants && Object.keys(p.vstock || {}).length ? (() => { const vs = Object.values(p.vstock), allLim = p.variants.every(n => p.vstock[n] && p.vstock[n].stock != null); const sum = vs.reduce((a, x) => a + (x.status || x.stock == null ? 0 : x.stock), 0); const outN = p.variants.filter(n => p.vstock[n] && (p.vstock[n].status === 'soldout' || p.vstock[n].stock === 0)).length; return h('span', { class: 'badge ' + (outN ? 'b-warn' : '') }, (allLim ? nf(sum) : 'حسب الخيار') + (outN ? ' · نفد ' + nf(outN) : '')); })() : p.stock == null ? h('span', { class: 'mut' }, '∞') : h('span', { class: 'badge ' + (p.stock === 0 ? 'b-bad' : p.stock <= 3 ? 'b-warn' : '') }, p.stock === 0 ? 'نفد' : nf(p.stock))),
           h('td', { class: 'hide-m num' }, nf(p.sold)),
           h('td', {}, h('button', { class: 'btn sm qe', onclick: () => quick(p) }, ic('edit'), 'سريع'))))))));
     };
@@ -81,6 +81,10 @@
     const cat = h('select', { disabled: !custom }, Object.entries(A.CATS).map(([k, v]) => h('option', { value: k, selected: p.cat === k }, v)));
     const hid = h('input', { type: 'checkbox', checked: !!p.hidden });
     const stSel = statusSelect(p.status);
+    // مخزون كل خيار (لون / مقاس): صف لكل خيار فيه الكمية والحالة
+    const vRows = (p.variants || []).map(name => { const cur = (p.vstock || {})[name] || {}; return { name, qty: h('input', { type: 'number', min: 0, inputmode: 'numeric', placeholder: 'غير محدود', value: cur.stock == null ? '' : cur.stock, 'aria-label': 'الكمية: ' + name, style: 'width:110px' }), st: statusSelect(cur.status) }; });
+    const vCard = vRows.length ? h('div', { class: 'card' }, h('h3', {}, 'المخزون لكل خيار'), h('div', { class: 'hint', style: 'margin-bottom:10px' }, 'اكتب الكمية المتوفرة لكل لون أو مقاس. اتركها فاضية = غير محدود، و0 = نفد هالخيار فقط وتبقى الخيارات الثانية تنباع.'),
+      h('div', { class: 'tw' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'الخيار'), h('th', {}, 'الكمية'), h('th', {}, 'الحالة'))), h('tbody', {}, vRows.map(r => h('tr', {}, h('td', {}, r.name), h('td', {}, r.qty), h('td', {}, r.st))))))) : null;
     const bgIn = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(p.bg || '') ? p.bg : '#f1ece2', 'aria-label': 'لون الخلفية', style: 'width:56px;height:40px;padding:2px' });
     let bgSet = /^#[0-9a-f]{6}$/i.test(p.bg || '');
     bgIn.oninput = () => { bgSet = true; bgInfo.textContent = bgIn.value; };
@@ -93,6 +97,7 @@
     const save = async () => {
       cl();
       const body = { price: F.price.value, old: F.old.value, stock: F.stock.value, cost: F.cost.value, sku: F.sku.value, hidden: hid.checked ? 1 : 0, status: stSel.value, bg: bgSet ? bgIn.value : '' };
+      if (vRows.length) body.vstock = Object.fromEntries(vRows.map(r => [r.name, { stock: r.qty.value, status: r.st.value }]));
       if (!custom && imgsDirty) body.imgs = imgs;
       if (custom) Object.assign(body, { name: F.name.value, en: F.en.value, cat: cat.value, brand: F.brand.value, sub: F.sub.value, short: F.short.value, desc: F.desc.value, imgs });
       if (Number(body.old) && Number(body.old) <= Number(body.price)) { F.old.classList.add('bad'); return A.toast('السعر قبل الخصم يجب أن يكون أعلى من السعر الحالي', true); }
@@ -108,10 +113,11 @@
           A.field('التصنيف', cat), t('brand', 'العلامة', disabledTxt), h('div', { class: 'full' }, t('sub', 'وصف مختصر تحت الاسم', Object.assign({ maxlength: 120 }, disabledTxt))),
           h('div', { class: 'full' }, ta('short', 'وصف قصير', disabledTxt)), h('div', { class: 'full' }, ta('desc', 'الوصف الكامل', Object.assign({ style: 'min-height:140px' }, disabledTxt))))),
         h('div', { class: 'card' }, h('h3', {}, 'الصور'), imgBox, h('div', { class: 'hint', style: 'margin-top:8px' }, 'الصورة الأولى هي الرئيسية. JPG أو PNG أو WEBP حتى 5 ميغا، وبحد أقصى 8 صور.' + (!custom ? ' رفع صورة يستبدل صور المنتج الحالية كلها.' : '')), !custom && p.img_override ? h('div', { style: 'margin-top:8px' }, h('button', { type: 'button', class: 'btn sm', onclick: async () => { if (!await A.confirm('إرجاع الصور الأصلية', 'ستُحذف الصور اللي رفعتها ويرجع المنتج لصوره الأصلية.', 'إرجاع')) return; const x = await A.save('products/' + encodeURIComponent(p.id), { method: 'POST', body: { price: p.price, old: p.old, stock: p.stock == null ? '' : p.stock, cost: p.cost, sku: p.sku, hidden: p.hidden ? 1 : 0, status: p.status || '', bg: p.bg || '', imgs: [] } }, 'رجعت الصور الأصلية'); if (x.ok) A.reload(); } }, 'إرجاع الصور الأصلية')) : null),
+        vCard,
         h('div', { class: 'card' }, h('h3', {}, 'خلفية الصورة'), h('div', { class: 'row', style: 'gap:10px;align-items:center' }, bgIn, bgInfo, bgClear), h('div', { class: 'hint', style: 'margin-top:8px' }, 'لون الخلفية اللي تظهر وراء صورة المنتج في المتجر.'))),
         h('div', { class: 'stack' },
           h('div', { class: 'card' }, h('h3', {}, 'السعر'), t('price', 'السعر (ر.س)', { type: 'number', min: 1, inputmode: 'numeric' }), t('old', 'السعر قبل الخصم', { type: 'number', min: 0 }, 'اتركه فارغًا لو ما فيه خصم'), t('cost', 'التكلفة (داخلي)', { type: 'number', min: 0 }, 'لا تظهر للعميل')),
-          h('div', { class: 'card' }, h('h3', {}, 'المخزون والظهور'), t('sku', 'SKU', { dir: 'ltr', maxlength: 40 }), t('stock', 'الكمية المتوفرة', { type: 'number', min: 0, inputmode: 'numeric', placeholder: 'غير محدود' }, 'اتركه فارغًا = غير محدود، و0 = نفدت الكمية'), A.field('الحالة في المتجر', stSel, 'قريبًا أو نفد: يظهر المنتج بدون إمكانية الشراء'), h('label', { class: 'chk' }, hid, 'إخفاء من المتجر')))),
+          h('div', { class: 'card' }, h('h3', {}, 'المخزون والظهور'), t('sku', 'SKU', { dir: 'ltr', maxlength: 40 }), t('stock', vRows.length ? 'إجمالي كمية المنتج (اختياري)' : 'الكمية المتوفرة', { type: 'number', min: 0, inputmode: 'numeric', placeholder: 'غير محدود' }, vRows.length ? 'يفضّل تركه فارغًا؛ كمية كل لون أو مقاس تحطها في جدول «المخزون لكل خيار».' : 'اتركه فارغًا = غير محدود، و0 = نفدت الكمية'), A.field('الحالة في المتجر', stSel, 'قريبًا أو نفد: يظهر المنتج بدون إمكانية الشراء'), h('label', { class: 'chk' }, hid, 'إخفاء من المتجر')))),
       h('div', { class: 'fab-save' }, h('button', { class: 'btn pri', onclick: save }, 'حفظ'), h('a', { class: 'btn', href: '#products' }, 'إلغاء')));
     F.stock.value = p.stock == null ? '' : p.stock;
   }

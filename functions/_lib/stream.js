@@ -33,7 +33,7 @@ export const createPaymentLink = (env, productId, ref, origin) =>
     currency: 'SAR',
     max_number_of_payments: 1,
     success_redirect_url: origin + '/',
-    failure_redirect_url: origin + '/',
+    failure_redirect_url: origin + '/?pay=failed',
     custom_metadata: { order_ref: ref },
     valid_until: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
   });

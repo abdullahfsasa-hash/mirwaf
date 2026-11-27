@@ -264,6 +264,7 @@ h1,h2,h3,h4{font-family:var(--font-display);font-weight:500;text-wrap:balance;li
 .pc:hover .pc__img img{transform:scale(1.05)}
 .pc__badge{position:absolute;top:12px;inset-inline-start:12px;padding:3px 11px;border-radius:999px;background:var(--btn-bg);color:var(--btn-fg);font:500 11.5px/1.7 var(--font-body)}
 .pc__badge--sale{background:var(--sale);color:#fff}
+.add:disabled,.btn:disabled{opacity:.45;cursor:not-allowed;pointer-events:none}
 .wish{position:absolute;top:10px;inset-inline-end:10px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:rgba(248,243,234,.9);color:#2a4a3e;transition:transform .2s,color .2s;z-index:2}
 .wish:hover{transform:scale(1.08)}
 .wish[aria-pressed="true"]{color:var(--sale)}
@@ -1357,6 +1358,8 @@ const DICT = {
   'الأكثر خصمًا': 'Biggest discount',
   'تصفية المنتجات': 'Filter products',
   'المزيد قريبًا': 'More coming soon',
+  'قريبًا': 'Coming soon',
+  'هذا المنتج سيتوفر قريبًا.': 'This item will be available soon.',
   'نضيف إلى هذا القسم باستمرار.': 'We keep adding to this section.',
   'تصفح كل المنتجات': 'Browse all products',
   'اختر الخيارات': 'Choose options',
@@ -1646,13 +1649,17 @@ async function applyCatalog(d) {
     const np = { id: e.id, cat: e.cat, name: e.name, en: e.en || e.name, brand: e.brand || 'لوتشي', sub: e.sub || '', price: e.price, old: e.old, img: e.img, gallery: [e.img], tags: [], short: e.short, desc: e.desc || e.short || '', details: [], specs: [] };
     AR0.P.push(np); P.push(clone(np)); HAY[e.id] = [e.name, e.brand, e.sub, e.desc].filter(Boolean).join(' ');
   });
-  AR0.P.forEach(p => { const o = d.items[p.id]; if (o) { p.price = o.price; p.old = o.old; p.stock = o.stock; p.hidden = !!o.hidden; } });
+  AR0.P.forEach(p => {
+    const o = d.items[p.id]; if (!o) return;
+    p.price = o.price; p.old = o.old; p.stock = o.stock; p.hidden = !!o.hidden; p.st = o.st || ''; p.bg = /^#[0-9a-f]{6}$/i.test(o.bg || '') ? o.bg : '';
+    if (Array.isArray(o.imgs) && o.imgs.length && o.imgs.every(u => typeof u === 'string' && /^(https:\/\/\S+|[A-Za-z0-9_-]{1,60})$/.test(u))) { p.img = o.imgs[0]; p.gallery = o.imgs.slice(); }
+  });
   applyData();
   for (let i = P.length - 1; i >= 0; i--) { const a = AR0.P.find(x => x.id === P[i].id); if (a && a.hidden) P.splice(i, 1); }
-  S.cart = S.cart.filter(i => byId(i.id)); saveCart(); updateBadge();
+  S.cart = S.cart.filter(i => { const p = byId(i.id); return p && canBuy(p); }); saveCart(); updateBadge();
   if (S.coupon) { const r = await apiCall('coupon', { code: S.coupon }); if (r && r.ok) S.cp = { code: r.code, pct: r.pct }; else if (r) { S.coupon = ''; S.cp = null; saveCart(); } }
   if (S.open === 'cart') renderCart();
-  if (S.r && S.r.v !== 'pay' && S.r.v !== 'done') render(true);
+  if (S.r && S.r.v !== 'done' && (S.r.v !== 'pay' || (!S.payFail && !$('#mysr')))) render(true);
 }
 
 /* ===================== الحالة ===================== */
@@ -1684,13 +1691,14 @@ function totals() {
   return { lines, count, sub, d, net, free: net >= CONFIG.freeFrom && sub > 0, left: Math.max(0, CONFIG.freeFrom - net), total: net };
 }
 function cartAdd(id, v, qty = 1, quiet) {
-  const sp = byId(id); if (sp && sp.stock === 0) { toast('هذا المنتج نفد من المخزون.'); return; }
+  const sp = byId(id); if (sp && !canBuy(sp)) { toast(isSoon(sp) ? 'هذا المنتج سيتوفر قريبًا.' : 'هذا المنتج نفد من المخزون.'); return false; }
   const k = id + '|' + (v || '');
   const ex = S.cart.find(i => ckey(i) === k);
   if (ex) ex.qty = Math.min(20, ex.qty + qty); else S.cart.push({ id, v: v || '', qty });
   saveCart(); updateBadge();
   if (S.open === 'cart') renderCart();
   if (!quiet) toast('تمت الإضافة إلى السلة', { label: 'عرض السلة', fn: () => openPanel('cart') });
+  return true;
 }
 function cartQty(k, d) {
   const i = S.cart.find(x => ckey(x) === k); if (!i) return;
@@ -1765,15 +1773,22 @@ async function applyCoupon(code) {
 function priceHTML(p) {
   return `<div class="price num"><b>${fmt(p.price)}</b><small>ريال</small>${p.old ? `<s>${fmt(p.old)}</s>` : ''}</div>`;
 }
+const soldOut = p => p.st === 'soldout' || p.stock === 0;
+const isSoon = p => p.st === 'soon' || !!p.soon;
+const canBuy = p => !soldOut(p) && !isSoon(p);
+const stateLabel = p => isSoon(p) ? 'قريبًا' : soldOut(p) ? 'نفدت الكمية' : '';
+const bgStyle = p => /^#[0-9a-f]{6}$/i.test(p.bg || '') ? ` style="background:${p.bg}"` : '';
 function wishBtn(id) {
   const w = S.wish.includes(id);
   return `<button class="wish" type="button" data-act="wish" data-id="${id}" aria-pressed="${w}" aria-label="${w ? 'إزالة من المفضلة' : 'إضافة إلى المفضلة'}">${ico(w ? 'heartf' : 'heart', 18)}</button>`;
 }
 function card(p, full) {
   const sale = disc(p), href = `#p-${p.id}`;
-  const img = `<a class="pc__img" href="${href}" data-nav tabindex="-1" aria-hidden="true"><img src="${IMGS(p.img)}" alt="" width="560" height="560" loading="lazy" decoding="async">${p.soon ? '<span class="pc__badge" style="background:#1E3B31;color:#F3ECDD">قريبًا · SOON</span>' : sale ? `<span class="pc__badge pc__badge--sale">وفّر ${sale}%</span>` : ''}</a>`;
+  const img = `<a class="pc__img" href="${href}" data-nav tabindex="-1" aria-hidden="true"${bgStyle(p)}><img src="${IMGS(p.img)}" alt="" width="560" height="560" loading="lazy" decoding="async">${stateLabel(p) ? `<span class="pc__badge">${stateLabel(p)}</span>` : sale ? `<span class="pc__badge pc__badge--sale">وفّر ${sale}%</span>` : ''}</a>`;
   const opts = !!p.variants;
-  const addBtn = p.soon ? `<a class="add" href="${href}" data-nav aria-label="قريبًا: ${esc(p.name)}">${ico('arrowL', 19)}</a>` : opts
+  const addBtn = !canBuy(p)
+    ? `<button class="add" type="button" disabled aria-label="${stateLabel(p)}">${ico('bag', 19)}</button>`
+    : opts
     ? `<a class="add" href="${href}" data-nav aria-label="اختر الخيارات: ${esc(p.name)}">${ico('bag', 19)}</a>`
     : `<button class="add" type="button" data-act="add" data-id="${p.id}" aria-label="أضف ${esc(p.name)} إلى السلة">${ico('bag', 19)}</button>`;
   if (full && p.origin) {
@@ -1785,7 +1800,7 @@ function card(p, full) {
         <p class="pc__sub">${esc(p.sub)}</p>
         <div class="specs3">${sp}</div>
         ${priceHTML(p)}
-        ${p.soon ? `<a class="btn btn--full btn--line" href="${href}" data-nav>قريبًا · SOON</a>` : opts ? `<a class="btn btn--full" href="${href}" data-nav>اختر الخيارات</a>` : `<button class="btn btn--full" type="button" data-act="add" data-id="${p.id}">أضف إلى السلة ${ico('bag', 18)}</button>`}
+        ${!canBuy(p) ? `<button class="btn btn--full" type="button" disabled>${stateLabel(p)}</button>` : opts ? `<a class="btn btn--full" href="${href}" data-nav>اختر الخيارات</a>` : `<button class="btn btn--full" type="button" data-act="add" data-id="${p.id}">أضف إلى السلة ${ico('bag', 18)}</button>`}
       </div></article>`;
   }
   return `<article class="pc">${img}${wishBtn(p.id)}
@@ -2025,7 +2040,7 @@ function vShop() {
 function vPdp() {
   const p = byId(S.r.id), cat = CATS[p.cat], sale = disc(p);
   const thumbs = p.gallery.length > 1
-    ? `<div class="gal__thumbs">${p.gallery.map((g, i) => `<button type="button" data-act="pimg" data-i="${i}" aria-current="${i === 0}" aria-label="الصورة ${i + 1}"><img src="${IMGS(g)}" alt="" width="72" height="72"></button>`).join('')}</div>` : '';
+    ? `<div class="gal__thumbs">${p.gallery.map((g, i) => `<button type="button" data-act="pimg" data-i="${i}" aria-current="${i === 0}" aria-label="الصورة ${i + 1}"${bgStyle(p)}><img src="${IMGS(g)}" alt="" width="72" height="72"></button>`).join('')}</div>` : '';
   const variants = p.variants ? `<div class="opt" id="vopt"><div class="opt__l">${p.vlabel}: <b id="vname">اختر ${p.vlabel}</b></div><div class="sw" role="group" aria-label="${p.vlabel}">${p.variants.map((v, i) => `<button type="button" data-act="pvar" data-i="${i}" aria-pressed="false" aria-label="${esc(v.n || v.k)}" title="${esc(v.n || v.k)}" style="background:${v.c}"></button>`).join('')}</div><div class="msg msg--err" id="vmsg"></div></div>` : '';
   const rel = [...P.filter(x => x.cat === p.cat && x.id !== p.id), ...P.filter(x => x.cat !== p.cat && x.id !== p.id)].slice(0, 4);
   const notes = (p.cat === 'beans' && !(p.tags || []).includes('drip') && p.sub) ? `<ul class="notes" aria-label="نكهات القهوة">${p.sub.split('•').map(s => `<li>${esc(s.trim())}</li>`).join('')}</ul>` : '';
@@ -2034,20 +2049,20 @@ function vPdp() {
     <nav class="crumbs" aria-label="مسار التنقل"><a href="#home" data-nav>الرئيسية</a><span>/</span><a href="#shop-${p.cat}" data-nav>${cat.label}</a><span>/</span><span aria-current="page">${esc(p.name)}</span></nav>
     <div class="pdp">
       <div class="gal">
-        <button class="gal__main" type="button" data-act="lb" aria-label="تكبير الصورة"><img id="gmain" src="${IMG(p.gallery[0])}" alt="${esc(p.name)}" width="1000" height="1000"><span class="zoom">${ico('zoom', 20)}</span></button>
+        <button class="gal__main" type="button" data-act="lb" aria-label="تكبير الصورة"${bgStyle(p)}><img id="gmain" src="${IMG(p.gallery[0])}" alt="${esc(p.name)}" width="1000" height="1000"><span class="zoom">${ico('zoom', 20)}</span></button>
         ${thumbs}
       </div>
       <div class="info">
         <div class="eyebrow">${cat.en}</div>
         <h1>${esc(p.name)}</h1>
         <p class="sub">${esc(whoLine)}</p>
-        <div class="priceline num"><b>${fmt(p.price)} ريال</b>${p.soon ? '<span class="off">قريبًا</span>' : p.stock === 0 ? '<span class="off">نفدت الكمية</span>' : ''}${p.old ? `<s>${fmt(p.old)} ريال</s><span class="off">وفّر ${sale}%</span>` : ''}</div>
+        <div class="priceline num"><b>${fmt(p.price)} ريال</b>${stateLabel(p) ? `<span class="off">${stateLabel(p)}</span>` : ''}${p.old ? `<s>${fmt(p.old)} ريال</s><span class="off">وفّر ${sale}%</span>` : ''}</div>
         <p class="desc">${esc(p.short || p.desc)}</p>${notes}
         ${variants}
         <div class="buy">
           <div class="qty" role="group" aria-label="الكمية"><button type="button" data-act="pq" data-d="-1" aria-label="إنقاص">${ico('minus', 18)}</button><output id="pqty" class="num">1</output><button type="button" data-act="pq" data-d="1" aria-label="زيادة">${ico('plus', 18)}</button></div>
-          ${p.soon ? `<button class="btn" type="button" disabled>قريبًا · SOON</button>${WA ? `<a class="btn btn--line" href="https://wa.me/${WA}?text=${encodeURIComponent('أبغى أعرف متى تتوفر ' + p.name)}" target="_blank" rel="noopener noreferrer">اسألنا عن موعد التوفر</a>` : ''}` : `<button class="btn" type="button" data-act="padd">أضف إلى السلة ${ico('bag', 18)}</button>
-          <button class="btn btn--line" type="button" data-act="pbuy">اشترِ الآن</button>`}
+          ${canBuy(p) ? `<button class="btn" type="button" data-act="padd">أضف إلى السلة ${ico('bag', 18)}</button>
+          <button class="btn btn--line" type="button" data-act="pbuy">اشترِ الآن</button>` : `<button class="btn" type="button" disabled>${stateLabel(p)}</button>${isSoon(p) && WA ? `<a class="btn btn--line" href="https://wa.me/${WA}?text=${encodeURIComponent('أبغى أعرف متى تتوفر ' + p.name)}" target="_blank" rel="noopener noreferrer">اسألنا عن موعد التوفر</a>` : ''}`}
           ${wishBtn(p.id).replace('class="wish"', 'class="wish" style="position:static;width:50px;height:50px;border:1px solid var(--line);background:transparent;color:var(--ink)"')}
         </div>
         <ul class="perks">
@@ -2067,7 +2082,7 @@ function vPdp() {
   <section class="sec" style="padding-top:10px"><div class="wrap">
     <div class="sec-head"><h2 class="sec-title">قد يعجبك أيضًا</h2></div>
     <div class="grid">${rel.map(x => card(x)).join('')}</div></div></section>
-  <div class="stickybuy"><div class="price num"><b>${fmt(p.price)}</b><small>ريال</small>${p.old ? `<s>${fmt(p.old)}</s>` : ''}</div><button class="btn" type="button" data-act="padd">أضف إلى السلة</button></div>`;
+  <div class="stickybuy"><div class="price num"><b>${fmt(p.price)}</b><small>ريال</small>${p.old ? `<s>${fmt(p.old)}</s>` : ''}</div>${canBuy(p) ? '<button class="btn" type="button" data-act="padd">أضف إلى السلة</button>' : `<button class="btn" type="button" disabled>${stateLabel(p)}</button>`}</div>`;
 }
 function curImg() { const p = byId(S.pdp.id); return S.pdp.vimg || p.gallery[S.pdp.gi]; }
 function pdpSync() {
@@ -2085,8 +2100,8 @@ function pdpAdd(buy) {
     $('#vmsg').textContent = `اختر ${p.vlabel} أولًا.`;
     $('#vopt').scrollIntoView({ block: 'center', behavior: 'smooth' }); return;
   }
-  cartAdd(p.id, p.variants ? p.variants[st.vi].k : '', st.qty, buy);
-  if (buy) go('checkout');
+  const added = cartAdd(p.id, p.variants ? p.variants[st.vi].k : '', st.qty, buy);
+  if (buy && added !== false) go('checkout');
 }
 
 /* ----- المدونة ----- */
@@ -2323,6 +2338,13 @@ function vCheckout() {
 }
 function vPay() {
   const o = S.last;
+  if (o && S.payFail) return `<div class="wrap"><div class="paybox">
+    <h1>لم تكتمل عملية الدفع</h1><p class="lead">حاول مرة أخرى أو اختر طريقة أخرى لإتمام طلبك.</p>
+    <div class="paytot num"><span>إجمالي المبلغ</span><span>${fmt(o.total)} ريال</span></div>
+    <div id="mysr"><p class="msg msg--err" role="alert">لم يتم الدفع.</p><p style="margin-top:12px"><button class="btn btn--sm" type="button" id="payRetry">حاول مرة أخرى</button></p></div>
+    <p style="margin-top:14px"><a class="btn btn--line btn--sm" href="${WA ? waUrl(o) : '#shop'}" target="_blank" rel="noopener noreferrer">الدفع بطريقة أخرى (واتساب)</a></p>
+    <p style="margin-top:10px"><a class="btn btn--line btn--sm" href="#shop" data-nav>متابعة التسوق</a></p>
+  </div></div>`;
   if (!o || !PAY_ON) return `<div class="wrap"><div class="empty" style="padding-block:90px"><a class="btn" href="#home" data-nav>العودة للرئيسية</a></div></div>`;
   return `<div class="wrap"><div class="paybox">
     <h1>الدفع الآمن</h1><p class="lead">أكمل دفع طلبك بالبطاقة.</p>
@@ -2380,6 +2402,7 @@ function parse(tok) {
 }
 function route(tok) {
   S.tok = (tok || 'home').replace(/^#/, '') || 'home';
+  if (S.tok !== 'pay') S.payFail = false;
   S.r = parse(S.tok);
   closePanels(true);
   S.shop = { cat: S.r.cat || null, pill: 'all', sort: 'featured' };
@@ -2406,7 +2429,7 @@ function render(keepScroll) {
   else if (r.v === 'done') { h = vDone(); title = tt('تم تجهيز طلبك') + ' | ' + SITE; }
   view.innerHTML = h;
   if (r.v === 'pdp') pdpSync();
-  if (r.v === 'pay') mountPay();
+  if (r.v === 'pay') { if (S.payFail) { const rb = $('#payRetry'); if (rb) rb.onclick = () => { S.payFail = false; render(); }; } else mountPay(); }
   if (r.v === 'checkout') { prefillCheckout(); if (!CATALOG_OK) loadCatalog(); } // نعيد جلب حالة الدفع لو لم تصل سابقًا
   if (r.v === 'account') accountMounted();
   mountG();
@@ -2688,11 +2711,17 @@ $('#footCats').innerHTML = footCatsHTML();
 (function payReturn() {
   try {
     const q = new URLSearchParams(location.search), id = q.get('invoice_id') || q.get('id') || '', st = q.get('status');
+    // فشل الدفع أو إلغاؤه: نبقي الزائر في صفحة الدفع برسالة "حاول مرة أخرى" بدل إرجاعه للرئيسية.
+    if (/[?&]pay=failed/.test(location.search) || (st && st !== 'paid' && (id || q.has('payment_id') || q.has('invoice_id')))) {
+      const o = loadPending();
+      if (o) { S.last = o; S.payFail = true; history.replaceState(null, '', location.pathname + '#pay'); }
+      else { S.payFailMsg = true; history.replaceState(null, '', location.pathname + '#home'); }
+      return;
+    }
     if (st && (id || q.has('payment_id') || q.has('invoice_id'))) {
       const o = loadPending();
       if (o) {
         S.last = o;
-        if (st !== 'paid') { history.replaceState(null, '', location.pathname + '#pay'); return; }
         o.pay = { id: clean(id, 80), status: 'checking' };
         (async () => {
           const r = await apiCall('pay/verify', { ref: o.ref, id: o.pay.id });
@@ -2717,6 +2746,7 @@ if (CONFIG.freelanceNo) { const f = $('#footReg'); if (f) f.textContent = 'وث�
 })();
 chatInit(); updateBadge();
 route(location.hash.slice(1) || 'home');
+if (S.payFailMsg) toast('لم تكتمل عملية الدفع. جرّب مرة أخرى أو اختر طريقة أخرى.');
 if (isEn()) trTree(document.body);
 startObserver();
 loadCatalog();

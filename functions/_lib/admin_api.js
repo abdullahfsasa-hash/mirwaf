@@ -326,7 +326,7 @@ async function productsFull(env, withSold) {
   return Object.values(cat).map(p => {
     const e = p.extra || {}, m = meta[p.id] || {};
     return {
-      id: p.id, name: p.name, en: p.en || '', cat: p.cat, brand: p.brand || '', img: p.img || '', imgs: Array.isArray(e.imgs) && e.imgs.length ? e.imgs : (p.img ? [p.img] : []),
+      id: p.id, name: p.name, en: p.en || '', cat: p.cat, brand: p.brand || '', img: p.ovImgs && p.ovImgs.length ? p.ovImgs[0] : (p.img || ''), imgs: Array.isArray(e.imgs) && e.imgs.length ? e.imgs : (p.ovImgs && p.ovImgs.length ? p.ovImgs : (p.img ? [p.img] : [])), img_override: p.ovImgs && p.ovImgs.length ? 1 : 0, bg: p.bg || '', status: p.status || '',
       price: p.price, old: p.old || 0, stock: p.stock, hidden: p.hidden, custom: p.custom ? 1 : 0, variants: p.variants || null,
       sub: e.sub || '', short: e.short || '', desc: e.desc || '', sku: m.sku || '', cost: m.cost == null ? null : m.cost, sold: sold[p.id] || 0
     };
@@ -345,7 +345,11 @@ function readProduct(b, isCustom) {
   if (b.cost !== '' && b.cost != null && cost == null) return { error: 'cost' };
   const sku = clean(b.sku || '', 40);
   if (sku && !/^[A-Za-z0-9_./-]{1,40}$/.test(sku)) return { error: 'sku' };
-  Object.assign(o, { price, old, stock, cost, sku, hidden: b.hidden ? 1 : 0 });
+  const bg = b.bg === '' || b.bg == null ? '' : String(b.bg);
+  if (bg && !/^#[0-9a-f]{6}$/i.test(bg)) return { error: 'bg' };
+  const status = b.status === 'soon' || b.status === 'soldout' ? b.status : '';
+  Object.assign(o, { price, old, stock, cost, sku, bg, status, hidden: b.hidden ? 1 : 0 });
+  if (!isCustom && Array.isArray(b.imgs)) o.ovImgs = b.imgs.map(String).filter(imgOk).slice(0, 8); // صور بديلة للمنتج الأساسي (مصفوفة فارغة = رجوع للصور الأصلية)
   if (isCustom) {
     const name = clean(b.name, 100);
     if (name.length < 2) return { error: 'name' };
@@ -363,7 +367,7 @@ async function productCreate(request, env, from) {
   const r = readProduct(b, true);
   if (r.error) return J({ ok: false, error: 'invalid', field: r.error }, 400);
   const v = r.v, id = 'x-' + [...crypto.getRandomValues(new Uint8Array(4))].map(x => x.toString(16).padStart(2, '0')).join('');
-  await env.DB.prepare('INSERT INTO products (id, price, old_price, stock, hidden, extra, meta) VALUES (?,?,?,?,?,?,?)').bind(id, v.price, v.old, v.stock, v.hidden, JSON.stringify(v.extra), JSON.stringify({ sku: v.sku, cost: v.cost })).run();
+  await env.DB.prepare('INSERT INTO products (id, price, old_price, stock, hidden, extra, meta) VALUES (?,?,?,?,?,?,?)').bind(id, v.price, v.old, v.stock, v.hidden, JSON.stringify(v.extra), JSON.stringify({ sku: v.sku, cost: v.cost, bg: v.bg, status: v.status })).run();
   return J({ ok: true, id });
 }
 
@@ -378,7 +382,10 @@ async function productUpdate(request, env, id) {
   if (r.error) return J({ ok: false, error: 'invalid', field: r.error }, 400);
   const v = r.v;
   await env.DB.prepare('INSERT INTO products (id, price, old_price, stock, hidden) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price = excluded.price, old_price = excluded.old_price, stock = excluded.stock, hidden = excluded.hidden').bind(id, v.price, v.old, v.stock, v.hidden).run();
-  await env.DB.prepare('UPDATE products SET meta = ? WHERE id = ?').bind(JSON.stringify({ sku: v.sku, cost: v.cost }), id).run();
+  const prevRow = await env.DB.prepare('SELECT meta FROM products WHERE id = ?').bind(id).first();
+  const meta = { ...parseObj(prevRow && prevRow.meta), sku: v.sku, cost: v.cost, bg: v.bg, status: v.status };
+  if (v.ovImgs) { if (v.ovImgs.length) meta.imgs = v.ovImgs; else delete meta.imgs; }
+  await env.DB.prepare('UPDATE products SET meta = ? WHERE id = ?').bind(JSON.stringify(meta), id).run();
   if (custom) await env.DB.prepare('UPDATE products SET extra = ? WHERE id = ?').bind(JSON.stringify(v.extra), id).run();
   return J({ ok: true });
 }
@@ -406,6 +413,7 @@ async function productsBulk(request, env) {
     if (!c) continue;
     await env.DB.prepare('INSERT OR IGNORE INTO products (id, price, old_price, stock, hidden) VALUES (?,?,?,?,?)').bind(id, c.price, c.old || 0, c.stock, c.hidden ? 1 : 0).run();
     if ('hidden' in p) await env.DB.prepare('UPDATE products SET hidden = ? WHERE id = ?').bind(p.hidden ? 1 : 0, id).run();
+    if ('status' in p) { const row = await env.DB.prepare('SELECT meta FROM products WHERE id = ?').bind(id).first(); const m = parseObj(row && row.meta); m.status = p.status === 'soon' || p.status === 'soldout' ? p.status : ''; await env.DB.prepare('UPDATE products SET meta = ? WHERE id = ?').bind(JSON.stringify(m), id).run(); }
     if ('stock' in p) { const s = p.stock === '' || p.stock == null ? null : int(p.stock, 0, 100000); if (p.stock !== '' && p.stock != null && s == null) return J({ ok: false, error: 'invalid' }, 400); await env.DB.prepare('UPDATE products SET stock = ? WHERE id = ?').bind(s, id).run(); }
     if ('price' in p) { const x = int(p.price, 1, 100000); if (x == null) return J({ ok: false, error: 'invalid' }, 400); await env.DB.prepare('UPDATE products SET price = ? WHERE id = ?').bind(x, id).run(); }
     if ('pricePct' in p) { const pc = Number(p.pricePct); if (!Number.isFinite(pc) || pc < -90 || pc > 300) return J({ ok: false, error: 'invalid' }, 400); const x = Math.max(1, Math.min(100000, Math.round(c.price * (1 + pc / 100)))); await env.DB.prepare('UPDATE products SET price = ? WHERE id = ?').bind(x, id).run(); }

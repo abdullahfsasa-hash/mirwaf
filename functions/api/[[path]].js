@@ -82,7 +82,7 @@ async function catalog(env) {
   const cat = await effectiveCatalog(env);
   const items = {}, extra = [];
   for (const [id, p] of Object.entries(cat)) {
-    items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden };
+    items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden, bg: p.bg || '', st: p.status || '', ...(p.ovImgs && p.ovImgs.length ? { imgs: p.ovImgs } : {}) };
     if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, short: e.short || '', desc: e.desc || '' }); }
   }
   return J({ ok: true, pay: streamOn(env) && (await getSetting(env, 'pay_card_on', '1')) !== '0', freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: lookupOn(env) }, 200, { 'cache-control': 'public, max-age=30' });
@@ -122,6 +122,7 @@ async function createOrder({ request, env, waitUntil }) {
     const p = it && typeof it.id === 'string' && Object.prototype.hasOwnProperty.call(cat, it.id) ? cat[it.id] : null;
     const qty = int(it && it.qty, 1, 20);
     if (!p || p.hidden || !qty) return J({ ok: false, error: 'invalid' }, 400);
+    if (p.status === 'soon' || p.status === 'soldout') return J({ ok: false, error: 'stock', id: it.id }, 409);
     let v = '';
     if (p.variants) { v = String(it.v || ''); if (!p.variants.includes(v)) return J({ ok: false, error: 'invalid' }, 400); }
     items.push({ id: it.id, name: p.name, v, qty, price: p.price });

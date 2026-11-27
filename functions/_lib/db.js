@@ -21,6 +21,7 @@ export const init = env => {
   if (!ready) {
     ready = (async () => {
       await env.DB.batch(DDL.map(s => env.DB.prepare(s)));
+      try { const { results: pc } = await env.DB.prepare('SELECT name FROM pragma_table_info(?)').bind('products').all(); if (!pc.some(r => r.name === 'meta')) await env.DB.prepare('ALTER TABLE products ADD COLUMN meta TEXT').run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message))) throw e; }
       await ensureAccounts(env); // جدول accounts وأعمدة العنوان الوطني (functions/_lib/accounts.js)
       await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind(SEED_COUPON.code, SEED_COUPON.pct, 'كود الإطلاق').run();
       await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind(SEED_COUPON_2.code, SEED_COUPON_2.pct, 'كود الإطلاق (لوتشي)').run();
@@ -39,7 +40,7 @@ export const getFreeFrom = async env => { const n = Number(await getSetting(env,
 // الكتالوج الفعلي: الأساسي + تعديلات الأدمن + المنتجات المضافة.
 // يُرجع كائنًا id → { name, cat, price, old, img, brand, variants, stock, hidden, custom, extra }
 export async function effectiveCatalog(env) {
-  const { results } = await env.DB.prepare('SELECT id, price, old_price, stock, hidden, extra FROM products').all();
+  const { results } = await env.DB.prepare('SELECT id, price, old_price, stock, hidden, extra, meta FROM products').all();
   const out = {};
   for (const [id, b] of Object.entries(CATALOG)) out[id] = { id, name: b.name, en: b.en, cat: b.cat, price: b.price, old: b.old || 0, img: b.img, brand: b.brand, variants: b.variants, stock: b.soon ? 0 : null, hidden: 0, custom: 0 };
   for (const r of results) {
@@ -53,6 +54,11 @@ export async function effectiveCatalog(env) {
     if (r.old_price != null) x.old = r.old_price;
     x.stock = r.stock == null ? null : r.stock;
     x.hidden = r.hidden ? 1 : 0;
+    // خيارات العرض من الأدمن: لون خلفية الصورة، الحالة (قريبًا / نفد)، وصور بديلة للمنتجات الأساسية.
+    let m = {}; try { m = r.meta ? JSON.parse(r.meta) : {}; } catch (_) { }
+    x.bg = /^#[0-9a-f]{6}$/i.test(m.bg || '') ? m.bg : '';
+    x.status = m.status === 'soon' || m.status === 'soldout' ? m.status : '';
+    if (!x.custom && Array.isArray(m.imgs) && m.imgs.length) { x.ovImgs = m.imgs.filter(u => typeof u === 'string'); }
   }
   return out;
 }

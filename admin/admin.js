@@ -98,7 +98,8 @@
   /* ---------- دخول ---------- */
   function login(msg) {
     const err = h('div', { class: 'err' }, msg || '');
-    const pw = h('input', { type: 'password', autocomplete: 'current-password', 'aria-label': 'كلمة السر' });
+    const pw = h('input', { type: 'password', autocomplete: 'current-password', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false', 'aria-label': 'كلمة السر' });
+    const eye = h('label', { class: 'chk', style: 'margin-top:8px' }, h('input', { type: 'checkbox', onchange: e => { pw.type = e.target.checked ? 'text' : 'password'; } }), 'إظهار كلمة السر');
     const go = async e => {
       e.preventDefault(); err.textContent = '';
       const r = await A.api('login', { method: 'POST', body: { password: pw.value } }).catch(() => ({}));
@@ -108,7 +109,7 @@
     };
     app.replaceChildren(h('div', { class: 'login-wrap' }, h('form', { class: 'login card', onsubmit: go },
       h('h2', {}, 'لوتشي'), h('span', { class: 'mut' }, 'لوحة التحكم'),
-      h('div', { class: 'f', style: 'margin-top:14px' }, h('label', {}, 'كلمة السر'), pw), err,
+      h('div', { class: 'f', style: 'margin-top:14px' }, h('label', {}, 'كلمة السر'), pw, eye), err,
       h('button', { class: 'btn pri', style: 'width:100%;justify-content:center' }, 'دخول'))));
     pw.focus();
   }

@@ -19,6 +19,17 @@ const parseItems = s => { try { const a = JSON.parse(s); return Array.isArray(a)
 
 export async function onRequest(context) {
   const { request, env, params } = context;
+  const p0 = (Array.isArray(params.path) ? params.path : [params.path]).filter(Boolean)[0];
+  // الكتالوج من الكاش مباشرة (بدون ما نلمس القاعدة)
+  if (p0 === 'catalog' && request.method === 'GET') { try { const hit = await caches.default.match(CAT_KEY); if (hit) return new Response(hit.body, { status: 200, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-cat': 'hit' } }); } catch (_) { } }
+  const res = await handle(context);
+  // أي تعديل من الأدمن أو طلب جديد يغيّر الأسعار/المخزون → نمسح كاش الكتالوج
+  if (request.method !== 'GET' && (p0 === 'admin' || p0 === 'orders') && res.status < 400) context.waitUntil ? context.waitUntil(purgeCatalog()) : await purgeCatalog();
+  return res;
+}
+
+async function handle(context) {
+  const { request, env, params } = context;
   try {
     if (!env.DB) return J({ ok: false, error: 'server' }, 503);
     await init(env);
@@ -27,7 +38,7 @@ export async function onRequest(context) {
     const [a, b, c] = path;
 
     // ---------- عامّ ----------
-    if (a === 'catalog' && m === 'GET') return catalog(env);
+    if (a === 'catalog' && m === 'GET') return catalog(env, context);
     if (a === 'store-settings' && m === 'GET') return publicStoreSettings(env);
     if (a === 'coupon' && m === 'POST') return couponCheck(request, env);
     if (a === 'orders' && m === 'POST') return createOrder(context);
@@ -78,14 +89,23 @@ export async function onRequest(context) {
 }
 
 /* ================= عامّ ================= */
-async function catalog(env) {
+// كاش الكتالوج على حافة Cloudflare 20 ثانية: الزوار ما ينتظرون القاعدة كل مرة. يُمسح عند أي حفظ من الأدمن.
+const CAT_KEY = 'https://cache.internal/catalog-v1';
+async function purgeCatalog() { try { await caches.default.delete(CAT_KEY); } catch (_) { } }
+async function catalog(env, ctx) {
+  const res = await catalogFresh(env);
+  try { const c = res.clone(); const body = await c.text(); const put = caches.default.put(CAT_KEY, new Response(body, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=20' } })); if (ctx && ctx.waitUntil) ctx.waitUntil(put); else await put; } catch (_) { }
+  return res;
+}
+async function catalogFresh(env) {
   const cat = await effectiveCatalog(env);
   const items = {}, extra = [];
   for (const [id, p] of Object.entries(cat)) {
     items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden, bg: p.bg || '', st: p.status || '', ...(p.txt ? { t: p.txt } : {}), ...(p.vs ? { vs: Object.fromEntries(Object.entries(p.vs).map(([k, x]) => [k, { s: x.stock, st: x.status }])) } : {}), ...(p.ovImgs && p.ovImgs.length ? { imgs: p.ovImgs } : {}) };
     if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, imgs: Array.isArray(e.imgs) && e.imgs.length ? e.imgs : [p.img], short: e.short || '', desc: e.desc || '' }); }
   }
-  return J({ ok: true, pay: streamOn(env) && (await getSetting(env, 'pay_card_on', '1')) !== '0', freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: lookupOn(env) }, 200, { 'cache-control': 'public, max-age=30' });
+  const [payOn, freeFrom] = await Promise.all([streamOn(env) ? getSetting(env, 'pay_card_on', '1') : '0', getFreeFrom(env)]);
+  return J({ ok: true, pay: streamOn(env) && payOn !== '0', freeFrom, items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: lookupOn(env) }, 200, { 'cache-control': 'no-store' });
 }
 
 async function couponCheck(request, env) {

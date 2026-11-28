@@ -43,7 +43,7 @@ export async function loginAttempt(request, env, password) {
   const ih = await ipHash(request, env), now = Date.now();
   const f = await env.DB.prepare('SELECT COUNT(*) AS n FROM admin_fail WHERE ip_hash = ? AND ts > ?').bind(ih, now - 900000).first();
   if (f && f.n >= 8) return 'locked';
-  if (typeof password === 'string' && password.length <= 200 && (await safeEqual(password, env.ADMIN_PASSWORD))) return 'ok';
+  if (typeof password === 'string' && password.length <= 200 && ((await safeEqual(password, env.ADMIN_PASSWORD)) || (password.trim() !== password && (await safeEqual(password.trim(), String(env.ADMIN_PASSWORD || '').trim()))))) return 'ok'; // نسامح المسافة الزائدة من النسخ واللصق في الجوال
   await env.DB.prepare('INSERT INTO admin_fail (ip_hash, ts) VALUES (?, ?)').bind(ih, now).run();
   await env.DB.prepare('DELETE FROM admin_fail WHERE ts < ?').bind(now - 86400000).run();
   return 'bad';

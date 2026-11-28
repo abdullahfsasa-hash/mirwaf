@@ -19,15 +19,20 @@ const DDL = [
 
 export const TXT_KEYS = ['name', 'en', 'brand', 'cat', 'sub', 'short', 'desc'];
 const CAT_KEYS = ['beans', 'cups', 'gear', 'filters', 'matcha'];
+// نسخة مخطط القاعدة: إذا كانت مسجّلة نتخطى كل أوامر الإنشاء (كانت تكلّف ~15 رحلة للقاعدة عند كل تشغيل بارد = بطء الموقع).
+// ارفع الرقم عند إضافة جدول أو عمود جديد.
+const SCHEMA_V = '3';
 let ready = null;
 export const init = env => {
   if (!ready) {
     ready = (async () => {
+      try { const r = await env.DB.prepare('SELECT v FROM settings WHERE k = ?').bind('schema_v').first(); if (r && r.v === SCHEMA_V) return; } catch (_) { }
       await env.DB.batch(DDL.map(s => env.DB.prepare(s)));
       try { const { results: pc } = await env.DB.prepare('SELECT name FROM pragma_table_info(?)').bind('products').all(); if (!pc.some(r => r.name === 'meta')) await env.DB.prepare('ALTER TABLE products ADD COLUMN meta TEXT').run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message))) throw e; }
       await ensureAccounts(env); // جدول accounts وأعمدة العنوان الوطني (functions/_lib/accounts.js)
       await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind(SEED_COUPON.code, SEED_COUPON.pct, 'كود الإطلاق').run();
       await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind(SEED_COUPON_2.code, SEED_COUPON_2.pct, 'كود الإطلاق (لوتشي)').run();
+      await setSetting(env, 'schema_v', SCHEMA_V);
     })().catch(e => { ready = null; throw e; });
   }
   return ready;
@@ -43,7 +48,7 @@ export const getFreeFrom = async env => { const n = Number(await getSetting(env,
 // الكتالوج الفعلي: الأساسي + تعديلات الأدمن + المنتجات المضافة.
 // يُرجع كائنًا id → { name, cat, price, old, img, brand, variants, stock, hidden, custom, extra }
 export async function effectiveCatalog(env) {
-  const { results } = await env.DB.prepare('SELECT id, price, old_price, stock, hidden, extra, meta FROM products').all();
+  const [{ results }, { results: vrows }] = await env.DB.batch([env.DB.prepare('SELECT id, price, old_price, stock, hidden, extra, meta FROM products'), env.DB.prepare('SELECT pid, v, stock, status FROM variant_stock')]);
   const out = {};
   for (const [id, b] of Object.entries(CATALOG)) out[id] = { id, name: b.name, en: b.en, cat: b.cat, sub: b.sub || '', short: b.short || '', desc: b.desc || '', price: b.price, old: b.old || 0, img: b.img, brand: b.brand, variants: b.variants, stock: b.soon ? 0 : null, hidden: 0, custom: 0 };
   for (const r of results) {
@@ -70,7 +75,6 @@ export async function effectiveCatalog(env) {
     }
   }
   // مخزون كل خيار (لون / مقاس): x.vs[اسم الخيار] = { stock: رقم أو null (غير محدود), status: '' | 'soon' | 'soldout' }
-  const { results: vrows } = await env.DB.prepare('SELECT pid, v, stock, status FROM variant_stock').all();
   for (const r of vrows) {
     const x = out[r.pid];
     if (!x || !x.variants || !x.variants.includes(r.v)) continue;

@@ -21,7 +21,7 @@ export const TXT_KEYS = ['name', 'en', 'brand', 'cat', 'sub', 'short', 'desc'];
 const CAT_KEYS = ['beans', 'cups', 'gear', 'filters', 'matcha'];
 // نسخة مخطط القاعدة: إذا كانت مسجّلة نتخطى كل أوامر الإنشاء (كانت تكلّف ~15 رحلة للقاعدة عند كل تشغيل بارد = بطء الموقع).
 // ارفع الرقم عند إضافة جدول أو عمود جديد.
-const SCHEMA_V = '4';
+const SCHEMA_V = '5';
 let ready = null;
 export const init = env => {
   if (!ready) {
@@ -38,6 +38,7 @@ export const init = env => {
         for (const [id, o] of Object.entries(OLD)) await env.DB.prepare('UPDATE products SET old_price = ? WHERE id = ? AND (old_price IS NULL OR old_price = 0) AND price < ?').bind(o, id, o).run();
         await setSetting(env, 'mig_old_prices_v1', '1');
       }
+      await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind('AM10', 10, 'كود AM10 (طلب صاحب المتجر)').run();
       await setSetting(env, 'schema_v', SCHEMA_V);
     })().catch(e => { ready = null; throw e; });
   }

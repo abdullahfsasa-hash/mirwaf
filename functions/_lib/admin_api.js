@@ -344,7 +344,7 @@ async function productsFull(env, withSold) {
     return {
       id: p.id, name: p.name, en: p.en || '', cat: p.cat, brand: p.brand || '', img: p.ovImgs && p.ovImgs.length ? p.ovImgs[0] : (p.img || ''), imgs: Array.isArray(e.imgs) && e.imgs.length ? e.imgs : (p.ovImgs && p.ovImgs.length ? p.ovImgs : (p.img ? [p.img] : [])), img_override: p.ovImgs && p.ovImgs.length ? 1 : 0, bg: p.bg || '', status: p.status || '',
       price: p.price, old: p.old || 0, stock: p.stock, hidden: p.hidden, custom: p.custom ? 1 : 0, variants: p.variants || null, vstock: p.vs || {},
-      sub: p.custom ? e.sub || '' : p.sub || '', short: p.custom ? e.short || '' : p.short || '', desc: p.custom ? e.desc || '' : p.desc || '', txt_override: p.txt ? 1 : 0, sku: m.sku || '', cost: m.cost == null ? null : m.cost, sold: sold[p.id] || 0
+      sub: p.custom ? e.sub || '' : p.sub || '', short: p.custom ? e.short || '' : p.short || '', desc: p.custom ? e.desc || '' : p.desc || '', txt_override: p.txt ? 1 : 0, prod: p.prod || '', exp: p.exp || '', sku: m.sku || '', cost: m.cost == null ? null : m.cost, sold: sold[p.id] || 0
     };
   });
 }
@@ -365,6 +365,12 @@ function readProduct(b, isCustom) {
   if (bg && !/^#[0-9a-f]{6}$/i.test(bg)) return { error: 'bg' };
   const status = b.status === 'soon' || b.status === 'soldout' ? b.status : '';
   Object.assign(o, { price, old, stock, cost, sku, bg, status, hidden: b.hidden ? 1 : 0 });
+  for (const k of ['prod', 'exp']) { // التاريخ: يقبل 2026-09-17 أو 17/09/2026، ويُخزَّن 17/09/2026
+    if (b[k] == null) continue;
+    let d = String(b[k]).trim(); const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d); if (iso) d = iso[3] + '/' + iso[2] + '/' + iso[1];
+    if (d && !/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return { error: k };
+    o[k] = d;
+  }
   if (!isCustom && ['name', 'en', 'brand', 'cat', 'sub', 'short', 'desc'].some(k => typeof b[k] === 'string')) {
     const t = { name: clean(b.name || '', 100), en: clean(b.en || '', 100), brand: clean(b.brand || '', 60), cat: String(b.cat || ''), sub: clean(b.sub || '', 120), short: clean(b.short || '', 500, true), desc: clean(b.desc || '', 2000, true) };
     if (t.name.length < 2) return { error: 'name' };
@@ -389,7 +395,7 @@ async function productCreate(request, env, from) {
   const r = readProduct(b, true);
   if (r.error) return J({ ok: false, error: 'invalid', field: r.error }, 400);
   const v = r.v, id = 'x-' + [...crypto.getRandomValues(new Uint8Array(4))].map(x => x.toString(16).padStart(2, '0')).join('');
-  await env.DB.prepare('INSERT INTO products (id, price, old_price, stock, hidden, extra, meta) VALUES (?,?,?,?,?,?,?)').bind(id, v.price, v.old, v.stock, v.hidden, JSON.stringify(v.extra), JSON.stringify({ sku: v.sku, cost: v.cost, bg: v.bg, status: v.status })).run();
+  await env.DB.prepare('INSERT INTO products (id, price, old_price, stock, hidden, extra, meta) VALUES (?,?,?,?,?,?,?)').bind(id, v.price, v.old, v.stock, v.hidden, JSON.stringify(v.extra), JSON.stringify({ sku: v.sku, cost: v.cost, bg: v.bg, status: v.status, prod: v.prod || '', exp: v.exp || '' })).run();
   return J({ ok: true, id });
 }
 
@@ -406,6 +412,7 @@ async function productUpdate(request, env, id) {
   await env.DB.prepare('INSERT INTO products (id, price, old_price, stock, hidden) VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price = excluded.price, old_price = excluded.old_price, stock = excluded.stock, hidden = excluded.hidden').bind(id, v.price, v.old, v.stock, v.hidden).run();
   const prevRow = await env.DB.prepare('SELECT meta FROM products WHERE id = ?').bind(id).first();
   const meta = { ...parseObj(prevRow && prevRow.meta), sku: v.sku, cost: v.cost, bg: v.bg, status: v.status };
+  for (const k of ['prod', 'exp']) if (typeof v[k] === 'string') meta[k] = v[k];
   if (v.ovImgs) { if (v.ovImgs.length) meta.imgs = v.ovImgs; else delete meta.imgs; }
   if (v.txt) { // نخزّن فقط النصوص اللي تختلف عن الأصل
     const base = CATALOG[id] || {}, d = {};

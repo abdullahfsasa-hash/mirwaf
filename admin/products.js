@@ -110,24 +110,28 @@
     const vCard = vRows.length ? h('div', { class: 'card' }, h('h3', {}, 'المخزون لكل لون / مقاس'), h('div', { class: 'hint', style: 'margin:-4px 0 10px' }, 'فاضي = غير محدود. 0 = نفد هذا الخيار فقط والباقي يبقى ينباع.'),
       h('div', { class: 'vgrid' }, h('div', { class: 'vh' }, 'الخيار'), h('div', { class: 'vh' }, 'الكمية'), h('div', { class: 'vh' }, 'الحالة'), ...vRows.flatMap(r => [h('div', { class: 'vn' }, r.name), r.qty, r.st]))) : null;
 
+    // تاريخ الإنتاج والانتهاء (يُعرض في صفحة المنتج تحت المواصفات)
+    const toIso = d => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d || ''); return m ? m[3] + '-' + m[2] + '-' + m[1] : ''; };
+    const prodIn = h('input', { type: 'date', value: toIso(p.prod), 'aria-label': 'تاريخ الإنتاج' }), expIn = h('input', { type: 'date', value: toIso(p.exp), 'aria-label': 'تاريخ الانتهاء' });
     const cl = () => el.querySelectorAll('.bad').forEach(x => x.classList.remove('bad'));
     const mark = x => { if (!x) return; x.classList.add('bad'); x.scrollIntoView({ behavior: 'smooth', block: 'center' }); x.focus && x.focus(); };
     const saveBtn = h('button', { class: 'btn pri', type: 'button' }, 'حفظ');
     const save = async () => {
       cl();
       const body = { price: F.price.value, old: F.old.value, stock: F.stock.value, cost: F.cost.value, sku: F.sku.value, hidden: hid.checked ? 1 : 0, status: stSel.value, bg: bgSet ? bgIn.value : '',
-        name: F.name.value, en: F.en.value, cat: cat.value, brand: F.brand.value, sub: F.sub.value, short: F.short.value, desc: F.desc.value };
+        name: F.name.value, en: F.en.value, cat: cat.value, brand: F.brand.value, sub: F.sub.value, short: F.short.value, desc: F.desc.value, prod: prodIn.value, exp: expIn.value };
       if (vRows.length) body.vstock = Object.fromEntries(vRows.map(r => [r.name, { stock: r.qty.value, status: r.st.value }]));
       if (custom) body.imgs = imgs; else if (imgsDirty) body.imgs = imgs;
       if (F.name.value.trim().length < 2) { mark(F.name); return A.toast('اكتب اسم المنتج', true); }
       if (!(Number(F.price.value) >= 1)) { mark(F.price); return A.toast('اكتب السعر (رقم صحيح)', true); }
+      if (prodIn.value && expIn.value && expIn.value <= prodIn.value) { mark(expIn); return A.toast('تاريخ الانتهاء لازم يكون بعد تاريخ الإنتاج', true); }
       if (Number(body.old) && Number(body.old) <= Number(body.price)) { mark(F.old); return A.toast('السعر قبل الخصم لازم يكون أعلى من السعر الحالي، أو اتركه فاضي', true); }
       if (custom && !imgs.length) return A.toast('أضف صورة واحدة على الأقل', true);
       saveBtn.disabled = true; saveBtn.textContent = 'جاري الحفظ…';
       const x = await A.save(isNew ? 'products' : 'products/' + encodeURIComponent(p.id), { method: 'POST', body }, 'تم حفظ المنتج ✓');
       saveBtn.disabled = false; saveBtn.textContent = 'حفظ';
       if (x.ok) return A.go('products');
-      const map = { price: F.price, old: F.old, stock: F.stock, cost: F.cost, sku: F.sku, name: F.name, cat, bg: bgIn };
+      const map = { price: F.price, old: F.old, stock: F.stock, cost: F.cost, sku: F.sku, name: F.name, cat, bg: bgIn, prod: prodIn, exp: expIn };
       if (x.field === 'img') A.toast('أضف صورة واحدة على الأقل', true);
       else if (x.field === 'vstock') mark(vRows[0] && vRows[0].qty);
       else mark(map[x.field]);
@@ -156,7 +160,8 @@
             A.field('الحالة في المتجر', stSel, 'قريبًا أو نفد = يظهر المنتج بس ما ينشرى'),
             t('stock', vRows.length ? 'إجمالي الكمية (اختياري)' : 'الكمية المتوفرة', { type: 'number', min: 0, inputmode: 'numeric', placeholder: 'غير محدود' }, vRows.length ? 'الأفضل تتركه فاضي وتحط كمية كل لون تحت.' : 'فاضي = غير محدود، 0 = نفدت الكمية'),
             t('sku', 'SKU (اختياري)', { dir: 'ltr', maxlength: 40 }),
-            h('label', { class: 'chk' }, hid, 'إخفاء من المتجر')))),
+            h('label', { class: 'chk' }, hid, 'إخفاء من المتجر')),
+          h('div', { class: 'card' }, h('h3', {}, 'التواريخ'), A.field('تاريخ الإنتاج', prodIn), A.field('تاريخ الانتهاء', expIn, 'تظهر للعميل في صفحة المنتج. اتركها فاضية لو ما تبيها.')))),
       h('div', { class: 'fab-save' }, saveBtn, h('a', { class: 'btn', href: '#products' }, 'إلغاء')));
     F.stock.value = p.stock == null ? '' : p.stock;
     F.old.value = p.old ? p.old : '';

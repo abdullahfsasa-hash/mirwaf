@@ -50,7 +50,7 @@ export const getFreeFrom = async env => { const n = Number(await getSetting(env,
 export async function effectiveCatalog(env) {
   const [{ results }, { results: vrows }] = await env.DB.batch([env.DB.prepare('SELECT id, price, old_price, stock, hidden, extra, meta FROM products'), env.DB.prepare('SELECT pid, v, stock, status FROM variant_stock')]);
   const out = {};
-  for (const [id, b] of Object.entries(CATALOG)) out[id] = { id, name: b.name, en: b.en, cat: b.cat, sub: b.sub || '', short: b.short || '', desc: b.desc || '', price: b.price, old: b.old || 0, img: b.img, brand: b.brand, variants: b.variants, stock: b.soon ? 0 : null, hidden: 0, custom: 0 };
+  for (const [id, b] of Object.entries(CATALOG)) out[id] = { id, name: b.name, en: b.en, cat: b.cat, sub: b.sub || '', short: b.short || '', desc: b.desc || '', prod: b.prod || '', exp: b.exp || '', price: b.price, old: b.old || 0, img: b.img, brand: b.brand, variants: b.variants, stock: b.soon ? 0 : null, hidden: 0, custom: 0 };
   for (const r of results) {
     let x = out[r.id];
     if (r.extra) {
@@ -66,6 +66,7 @@ export async function effectiveCatalog(env) {
     let m = {}; try { m = r.meta ? JSON.parse(r.meta) : {}; } catch (_) { }
     x.bg = /^#[0-9a-f]{6}$/i.test(m.bg || '') ? m.bg : '';
     x.status = m.status === 'soon' || m.status === 'soldout' ? m.status : '';
+    if (typeof m.prod === 'string') x.prod = m.prod; if (typeof m.exp === 'string') x.exp = m.exp; // تاريخ الإنتاج والانتهاء
     if (!x.custom && Array.isArray(m.imgs) && m.imgs.length) { x.ovImgs = m.imgs.filter(u => typeof u === 'string'); }
     // نصوص معدّلة من الأدمن للمنتج الأساسي (الاسم، الوصف…)
     if (!x.custom && m.txt && typeof m.txt === 'object') {

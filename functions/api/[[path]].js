@@ -101,7 +101,7 @@ async function catalogFresh(env) {
   const cat = await effectiveCatalog(env);
   const items = {}, extra = [];
   for (const [id, p] of Object.entries(cat)) {
-    items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden, bg: p.bg || '', st: p.status || '', ...(p.txt ? { t: p.txt } : {}), ...(p.vs ? { vs: Object.fromEntries(Object.entries(p.vs).map(([k, x]) => [k, { s: x.stock, st: x.status }])) } : {}), ...(p.ovImgs && p.ovImgs.length ? { imgs: p.ovImgs } : {}) };
+    items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden, bg: p.bg || '', st: p.status || '', pd: p.prod || '', ex: p.exp || '', ...(p.txt ? { t: p.txt } : {}), ...(p.vs ? { vs: Object.fromEntries(Object.entries(p.vs).map(([k, x]) => [k, { s: x.stock, st: x.status }])) } : {}), ...(p.ovImgs && p.ovImgs.length ? { imgs: p.ovImgs } : {}) };
     if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, imgs: Array.isArray(e.imgs) && e.imgs.length ? e.imgs : [p.img], short: e.short || '', desc: e.desc || '' }); }
   }
   const [payOn, freeFrom] = await Promise.all([streamOn(env) ? getSetting(env, 'pay_card_on', '1') : '0', getFreeFrom(env)]);

@@ -21,7 +21,7 @@ export const TXT_KEYS = ['name', 'en', 'brand', 'cat', 'sub', 'short', 'desc'];
 const CAT_KEYS = ['beans', 'cups', 'gear', 'filters', 'matcha'];
 // نسخة مخطط القاعدة: إذا كانت مسجّلة نتخطى كل أوامر الإنشاء (كانت تكلّف ~15 رحلة للقاعدة عند كل تشغيل بارد = بطء الموقع).
 // ارفع الرقم عند إضافة جدول أو عمود جديد.
-const SCHEMA_V = '3';
+const SCHEMA_V = '4';
 let ready = null;
 export const init = env => {
   if (!ready) {
@@ -32,6 +32,12 @@ export const init = env => {
       await ensureAccounts(env); // جدول accounts وأعمدة العنوان الوطني (functions/_lib/accounts.js)
       await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind(SEED_COUPON.code, SEED_COUPON.pct, 'كود الإطلاق').run();
       await env.DB.prepare('INSERT OR IGNORE INTO coupons (code, pct, active, note) VALUES (?, ?, 1, ?)').bind(SEED_COUPON_2.code, SEED_COUPON_2.pct, 'كود الإطلاق (لوتشي)').run();
+      // مرة وحدة: أسعار قبل العرض اللي طلبها صاحب المتجر (تظهر مشطوبة مع نسبة التوفير). ما تلمس منتج له سعر قبل خصم أصلًا.
+      if ((await getSetting(env, 'mig_old_prices_v1', '')) !== '1') {
+        const OLD = {"bk-silver": 82, "oro-blanco": 90, "bk-excelso": 78, "bk-adham": 68, "sout-mananasi": 70, "cup-speckled": 45, "mug-arabic": 39};
+        for (const [id, o] of Object.entries(OLD)) await env.DB.prepare('UPDATE products SET old_price = ? WHERE id = ? AND (old_price IS NULL OR old_price = 0) AND price < ?').bind(o, id, o).run();
+        await setSetting(env, 'mig_old_prices_v1', '1');
+      }
       await setSetting(env, 'schema_v', SCHEMA_V);
     })().catch(e => { ready = null; throw e; });
   }

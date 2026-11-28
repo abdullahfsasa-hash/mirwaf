@@ -17,6 +17,8 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS admin_fail (ip_hash TEXT, ts INTEGER)`
 ];
 
+export const TXT_KEYS = ['name', 'en', 'brand', 'cat', 'sub', 'short', 'desc'];
+const CAT_KEYS = ['beans', 'cups', 'gear', 'filters', 'matcha'];
 let ready = null;
 export const init = env => {
   if (!ready) {
@@ -43,7 +45,7 @@ export const getFreeFrom = async env => { const n = Number(await getSetting(env,
 export async function effectiveCatalog(env) {
   const { results } = await env.DB.prepare('SELECT id, price, old_price, stock, hidden, extra, meta FROM products').all();
   const out = {};
-  for (const [id, b] of Object.entries(CATALOG)) out[id] = { id, name: b.name, en: b.en, cat: b.cat, price: b.price, old: b.old || 0, img: b.img, brand: b.brand, variants: b.variants, stock: b.soon ? 0 : null, hidden: 0, custom: 0 };
+  for (const [id, b] of Object.entries(CATALOG)) out[id] = { id, name: b.name, en: b.en, cat: b.cat, sub: b.sub || '', short: b.short || '', desc: b.desc || '', price: b.price, old: b.old || 0, img: b.img, brand: b.brand, variants: b.variants, stock: b.soon ? 0 : null, hidden: 0, custom: 0 };
   for (const r of results) {
     let x = out[r.id];
     if (r.extra) {
@@ -60,6 +62,12 @@ export async function effectiveCatalog(env) {
     x.bg = /^#[0-9a-f]{6}$/i.test(m.bg || '') ? m.bg : '';
     x.status = m.status === 'soon' || m.status === 'soldout' ? m.status : '';
     if (!x.custom && Array.isArray(m.imgs) && m.imgs.length) { x.ovImgs = m.imgs.filter(u => typeof u === 'string'); }
+    // نصوص معدّلة من الأدمن للمنتج الأساسي (الاسم، الوصف…)
+    if (!x.custom && m.txt && typeof m.txt === 'object') {
+      const t = {};
+      for (const k of TXT_KEYS) if (typeof m.txt[k] === 'string' && (k !== 'cat' || CAT_KEYS.includes(m.txt[k]))) t[k] = m.txt[k];
+      if (Object.keys(t).length) { Object.assign(x, t); x.txt = t; }
+    }
   }
   // مخزون كل خيار (لون / مقاس): x.vs[اسم الخيار] = { stock: رقم أو null (غير محدود), status: '' | 'soon' | 'soldout' }
   const { results: vrows } = await env.DB.prepare('SELECT pid, v, stock, status FROM variant_stock').all();

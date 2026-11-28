@@ -82,8 +82,8 @@ async function catalog(env) {
   const cat = await effectiveCatalog(env);
   const items = {}, extra = [];
   for (const [id, p] of Object.entries(cat)) {
-    items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden, bg: p.bg || '', st: p.status || '', ...(p.vs ? { vs: Object.fromEntries(Object.entries(p.vs).map(([k, x]) => [k, { s: x.stock, st: x.status }])) } : {}), ...(p.ovImgs && p.ovImgs.length ? { imgs: p.ovImgs } : {}) };
-    if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, short: e.short || '', desc: e.desc || '' }); }
+    items[id] = { price: p.price, old: p.old, stock: p.stock, hidden: p.hidden, bg: p.bg || '', st: p.status || '', ...(p.txt ? { t: p.txt } : {}), ...(p.vs ? { vs: Object.fromEntries(Object.entries(p.vs).map(([k, x]) => [k, { s: x.stock, st: x.status }])) } : {}), ...(p.ovImgs && p.ovImgs.length ? { imgs: p.ovImgs } : {}) };
+    if (p.custom && !p.hidden) { const e = p.extra || {}; extra.push({ id, cat: p.cat, name: p.name, en: p.en || '', brand: p.brand || '', sub: e.sub || '', price: p.price, old: p.old, img: p.img, imgs: Array.isArray(e.imgs) && e.imgs.length ? e.imgs : [p.img], short: e.short || '', desc: e.desc || '' }); }
   }
   return J({ ok: true, pay: streamOn(env) && (await getSetting(env, 'pay_card_on', '1')) !== '0', freeFrom: await getFreeFrom(env), items, extra, gid: accountsOn(env) ? env.GOOGLE_CLIENT_ID : '', addr_lookup: lookupOn(env) }, 200, { 'cache-control': 'public, max-age=30' });
 }
@@ -374,7 +374,7 @@ async function productUpdate(request, env, id) {
   }
   return J({ ok: true });
 }
-const imgOk = s => /^[a-z0-9_-]{1,60}$/i.test(s) || /^https:\/\/[^\s"'<>\\]{4,280}$/i.test(s);
+const imgOk = s => /^[a-z0-9_-]{1,60}$/i.test(s) || /^https:\/\/[^\s"'<>\\]{4,280}$/i.test(s) || /^\/uploads\/[A-Za-z0-9._-]{4,80}$/.test(s);
 
 async function productCreate(request, env) {
   const b = await readJson(request, 6000);
@@ -408,7 +408,7 @@ async function uploadImage(request, env) {
   if (file.size < 10) return J({ ok: false, error: 'empty' }, 400);
   const key = Date.now().toString(36) + '-' + [...crypto.getRandomValues(new Uint8Array(8))].map(x => x.toString(16).padStart(2, '0')).join('') + '.' + ext;
   await env.IMAGES.put(key, file.stream(), { httpMetadata: { contentType: file.type } });
-  return J({ ok: true, url: new URL(request.url).origin + '/uploads/' + key });
+  return J({ ok: true, url: '/uploads/' + key });
 }
 
 async function couponsList(env) {

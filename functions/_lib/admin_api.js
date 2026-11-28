@@ -3,6 +3,7 @@
 import { J, clean, dig, readJson } from './util.js';
 import { effectiveCatalog, getSetting, setSetting, getFreeFrom, takeVariant, giveVariant } from './db.js';
 import { aramexCreate, carriersOn } from './carriers.js';
+import { CATALOG } from './catalog.js';
 import { lookupOn } from './address.js';
 
 const STATUSES = ['new', 'confirmed', 'shipped', 'done', 'cancelled'];
@@ -13,7 +14,7 @@ const DAY = 86400000;
 const int = (v, lo, hi) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= lo && n <= hi ? n : null; };
 const parseItems = s => { try { const a = JSON.parse(s); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
 const parseObj = s => { try { const o = JSON.parse(s); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } };
-const imgOk = s => /^[a-z0-9_-]{1,60}$/i.test(s) || /^https:\/\/[^\s"'<>\\]{4,280}$/i.test(s);
+const imgOk = s => /^[a-z0-9_-]{1,60}$/i.test(s) || /^https:\/\/[^\s"'<>\\]{4,280}$/i.test(s) || /^\/uploads\/[A-Za-z0-9._-]{4,80}$/.test(s);
 const normPhone = p => { let d = dig(String(p || '')).replace(/\D/g, ''); if (d.startsWith('00')) d = d.slice(2); if (d.startsWith('966')) d = d.slice(3); if (d.startsWith('0')) d = d.slice(1); return d; };
 export const CARRIERS = {
   aramex: { name: 'Aramex', url: 'https://www.aramex.com/track/results?ShipmentNumber=' },
@@ -343,7 +344,7 @@ async function productsFull(env, withSold) {
     return {
       id: p.id, name: p.name, en: p.en || '', cat: p.cat, brand: p.brand || '', img: p.ovImgs && p.ovImgs.length ? p.ovImgs[0] : (p.img || ''), imgs: Array.isArray(e.imgs) && e.imgs.length ? e.imgs : (p.ovImgs && p.ovImgs.length ? p.ovImgs : (p.img ? [p.img] : [])), img_override: p.ovImgs && p.ovImgs.length ? 1 : 0, bg: p.bg || '', status: p.status || '',
       price: p.price, old: p.old || 0, stock: p.stock, hidden: p.hidden, custom: p.custom ? 1 : 0, variants: p.variants || null, vstock: p.vs || {},
-      sub: e.sub || '', short: e.short || '', desc: e.desc || '', sku: m.sku || '', cost: m.cost == null ? null : m.cost, sold: sold[p.id] || 0
+      sub: p.custom ? e.sub || '' : p.sub || '', short: p.custom ? e.short || '' : p.short || '', desc: p.custom ? e.desc || '' : p.desc || '', txt_override: p.txt ? 1 : 0, sku: m.sku || '', cost: m.cost == null ? null : m.cost, sold: sold[p.id] || 0
     };
   });
 }
@@ -364,6 +365,12 @@ function readProduct(b, isCustom) {
   if (bg && !/^#[0-9a-f]{6}$/i.test(bg)) return { error: 'bg' };
   const status = b.status === 'soon' || b.status === 'soldout' ? b.status : '';
   Object.assign(o, { price, old, stock, cost, sku, bg, status, hidden: b.hidden ? 1 : 0 });
+  if (!isCustom && ['name', 'en', 'brand', 'cat', 'sub', 'short', 'desc'].some(k => typeof b[k] === 'string')) {
+    const t = { name: clean(b.name || '', 100), en: clean(b.en || '', 100), brand: clean(b.brand || '', 60), cat: String(b.cat || ''), sub: clean(b.sub || '', 120), short: clean(b.short || '', 500, true), desc: clean(b.desc || '', 2000, true) };
+    if (t.name.length < 2) return { error: 'name' };
+    if (!CATS.includes(t.cat)) return { error: 'cat' };
+    o.txt = t;
+  }
   if (!isCustom && Array.isArray(b.imgs)) o.ovImgs = b.imgs.map(String).filter(imgOk).slice(0, 8); // صور بديلة للمنتج الأساسي (مصفوفة فارغة = رجوع للصور الأصلية)
   if (isCustom) {
     const name = clean(b.name, 100);
@@ -400,6 +407,11 @@ async function productUpdate(request, env, id) {
   const prevRow = await env.DB.prepare('SELECT meta FROM products WHERE id = ?').bind(id).first();
   const meta = { ...parseObj(prevRow && prevRow.meta), sku: v.sku, cost: v.cost, bg: v.bg, status: v.status };
   if (v.ovImgs) { if (v.ovImgs.length) meta.imgs = v.ovImgs; else delete meta.imgs; }
+  if (v.txt) { // نخزّن فقط النصوص اللي تختلف عن الأصل
+    const base = CATALOG[id] || {}, d = {};
+    for (const [k, val] of Object.entries(v.txt)) if (val !== (base[k] || '')) d[k] = val;
+    if (Object.keys(d).length) meta.txt = d; else delete meta.txt;
+  }
   await env.DB.prepare('UPDATE products SET meta = ? WHERE id = ?').bind(JSON.stringify(meta), id).run();
   if (custom) await env.DB.prepare('UPDATE products SET extra = ? WHERE id = ?').bind(JSON.stringify(v.extra), id).run();
   // مخزون كل خيار (لون / مقاس): نتحقق من الكل قبل الكتابة

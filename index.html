@@ -1571,8 +1571,8 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => Number(n).toLocaleString('en-US');
-const IMG = n => /^https:\/\//.test(n) ? n : `img/${n}.webp`;
-const IMGS = n => /^https:\/\//.test(n) ? n : `img/${n}-s.webp`;
+const IMG = n => /^(https:\/\/|\/uploads\/)/.test(n) ? n : `img/${n}.webp`;
+const IMGS = n => /^(https:\/\/|\/uploads\/)/.test(n) ? n : `img/${n}-s.webp`;
 const byId = id => P.find(p => p.id === id);
 const WA = /^\d{8,15}$/.test(String(CONFIG.whatsapp || '')) ? String(CONFIG.whatsapp) : '';
 const clean = (s, n, nl) => String(s == null ? '' : s).replace(nl ? /[\u0000-\u0009\u000B-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g : /[\u0000-\u001F\u007F\u202A-\u202E\u2066-\u2069]/g, ' ').replace(/[ \t]{2,}/g, ' ').trim().slice(0, n);
@@ -1648,19 +1648,22 @@ async function applyCatalog(d) {
   if (d.freeFrom >= 0) CONFIG.freeFrom = d.freeFrom;
   (d.extra || []).forEach(e => {
     if (AR0.P.some(x => x.id === e.id)) return;
-    const np = { id: e.id, cat: e.cat, name: e.name, en: e.en || e.name, brand: e.brand || 'لوتشي', sub: e.sub || '', price: e.price, old: e.old, img: e.img, gallery: [e.img], tags: [], short: e.short, desc: e.desc || e.short || '', details: [], specs: [] };
+    const np = { id: e.id, cat: e.cat, name: e.name, en: e.en || e.name, brand: e.brand || 'لوتشي', sub: e.sub || '', price: e.price, old: e.old, img: e.img, gallery: Array.isArray(e.imgs) && e.imgs.length ? e.imgs.filter(u => typeof u === 'string') : [e.img], tags: [], short: e.short, desc: e.desc || e.short || '', details: [], specs: [] };
     AR0.P.push(np); P.push(clone(np)); HAY[e.id] = [e.name, e.brand, e.sub, e.desc].filter(Boolean).join(' ');
   });
   AR0.P.forEach(p => {
     const o = d.items[p.id]; if (!o) return;
     p.price = o.price; p.old = o.old; p.stock = o.stock; p.hidden = !!o.hidden; p.st = o.st || ''; p.vs = o.vs && typeof o.vs === 'object' ? o.vs : null; p.bg = /^#[0-9a-f]{6}$/i.test(o.bg || '') ? o.bg : '';
-    if (Array.isArray(o.imgs) && o.imgs.length && o.imgs.every(u => typeof u === 'string' && /^(https:\/\/\S+|[A-Za-z0-9_-]{1,60})$/.test(u))) { p.img = o.imgs[0]; p.gallery = o.imgs.slice(); }
+    if (Array.isArray(o.imgs) && o.imgs.length && o.imgs.every(u => typeof u === 'string' && /^(https:\/\/\S+|\/uploads\/[A-Za-z0-9._-]+|[A-Za-z0-9_-]{1,60})$/.test(u))) { p.img = o.imgs[0]; p.gallery = o.imgs.slice(); }
+    if (o.t && typeof o.t === 'object') { ['name', 'en', 'brand', 'cat', 'sub', 'short', 'desc'].forEach(k => { if (typeof o.t[k] === 'string' && (k !== 'cat' || AR0.CATS[o.t[k]])) p[k] = o.t[k]; }); HAY[p.id] = [p.name, p.brand, p.sub, p.desc].filter(Boolean).join(' '); if (o.t.en && EN.P[p.id]) EN.P[p.id].name = o.t.en; }
   });
   applyData();
   for (let i = P.length - 1; i >= 0; i--) { const a = AR0.P.find(x => x.id === P[i].id); if (a && a.hidden) P.splice(i, 1); }
   S.cart = S.cart.filter(i => { const p = byId(i.id); return p && canBuy(p) && !(i.v && vState(p, i.v)); }); saveCart(); updateBadge();
   if (S.coupon) { const r = await apiCall('coupon', { code: S.coupon }); if (r && r.ok) S.cp = { code: r.code, pct: r.pct }; else if (r) { S.coupon = ''; S.cp = null; saveCart(); } }
   if (S.open === 'cart') renderCart();
+  // رابط مباشر لمنتج مضاف من الأدمن: ما كان معروفًا قبل تحميل الكتالوج
+  if (S.r && S.r.v === 'home' && /^p-/.test(S.tok) && byId(S.tok.slice(2))) return route(S.tok);
   if (S.r && S.r.v !== 'done' && (S.r.v !== 'pay' || (!S.payFail && !$('#mysr')))) render(true);
 }
 

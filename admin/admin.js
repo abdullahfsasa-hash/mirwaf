@@ -14,7 +14,7 @@
   const TZ = 'Asia/Riyadh';
   A.dt = t => t ? new Date(t).toLocaleString('ar-SA-u-ca-gregory-nu-latn', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' }) : '—';
   A.d = t => t ? new Date(t).toLocaleDateString('ar-SA-u-ca-gregory-nu-latn', { timeZone: TZ, dateStyle: 'medium' }) : '—';
-  A.img = n => !n ? '' : /^https:\/\//.test(n) ? n : `/img/${n}-s.webp`;
+  A.img = n => !n ? '' : /^(https:\/\/|\/uploads\/)/.test(n) ? n : `/img/${n}-s.webp`;
   A.CARRIER_NAMES = { aramex: 'Aramex', smsa: 'SMSA', jt: 'J&T Express', naqel: 'Naqel', spl: 'البريد السعودي (SPL)', zajil: 'زاجل', other: 'أخرى / مندوب' };
   A.TRACK = { aramex: 'https://www.aramex.com/track/results?ShipmentNumber=', smsa: 'https://www.smsaexpress.com/track/?tracknumbers=', jt: 'https://www.jtexpress.sa/trackingExpress?billcode=', naqel: 'https://www.naqelexpress.com/en/tracking?waybill=', spl: 'https://splonline.com.sa/en/track-and-trace/?trackingNumber=' };
   A.trackUrl = (c, n) => (A.TRACK[c] && n) ? A.TRACK[c] + encodeURIComponent(n) : '';

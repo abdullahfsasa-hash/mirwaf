@@ -44,7 +44,8 @@ export function ensureAdminSchema(env) {
         'CREATE INDEX IF NOT EXISTS order_events_ref ON order_events (ref, ts)',
         'CREATE INDEX IF NOT EXISTS orders_status_created ON orders (status, created_at)',
         'CREATE INDEX IF NOT EXISTS orders_phone ON orders (phone)',
-        'CREATE INDEX IF NOT EXISTS orders_method_paid ON orders (method, pay_verified)'
+        'CREATE INDEX IF NOT EXISTS orders_method_paid ON orders (method, pay_verified)',
+        'CREATE TABLE IF NOT EXISTS admin_log (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, act TEXT, pid TEXT, ok INTEGER, err TEXT, body TEXT)'
       ].map(s => env.DB.prepare(s)));
       for (const c of ['tracking_no', 'carrier', 'addr_short', 'addr_building', 'addr_street', 'addr_district', 'addr_post', 'addr_extra']) await addCol(env, 'orders', c, 'TEXT');
       await addCol(env, 'orders', 'shipped_at', 'INTEGER');
@@ -569,8 +570,27 @@ async function health(env) {
 /* ============ الموجّه ============ */
 export async function adminRoute(request, env, path) {
   const [, b, c, d] = path, m = request.method;
-  if (!['summary', 'orders', 'orders-bulk', 'products', 'products-bulk', 'customers', 'accounts', 'coupons', 'settings', 'backup', 'health'].includes(b)) return null;
+  if (!['summary', 'orders', 'orders-bulk', 'products', 'products-bulk', 'customers', 'accounts', 'coupons', 'settings', 'backup', 'health', 'log'].includes(b)) return null;
   await ensureAdminSchema(env);
+  if (b === 'log' && m === 'GET') { const { results } = await env.DB.prepare('SELECT id, ts, act, pid, ok, err, body FROM admin_log ORDER BY id DESC LIMIT 200').all(); return J({ ok: true, log: results }); }
+  // سجل تعديلات المنتجات: نحفظ كل محاولة (ناجحة أو فاشلة) مع البيانات المرسلة، عشان ما يضيع أي تعديل
+  if ((b === 'products' || b === 'products-bulk') && m !== 'GET') {
+    const raw = await request.clone().text().catch(() => '');
+    const res = await adminRouteInner(request, env, path);
+    if (!res) return res;
+    let r = {}; try { r = await res.clone().json(); } catch (_) { }
+    const act = m === 'DELETE' ? 'delete' : b === 'products-bulk' ? 'bulk' : d === 'duplicate' ? 'duplicate' : c ? 'update' : 'create';
+    try {
+      await env.DB.prepare('INSERT INTO admin_log (ts, act, pid, ok, err, body) VALUES (?,?,?,?,?,?)').bind(Date.now(), act, clean(c || r.id || '', 40), r.ok ? 1 : 0, r.ok ? '' : String((r.error || res.status) + (r.field ? ':' + r.field : '')).slice(0, 80), raw.slice(0, 12000)).run();
+      if (Math.random() < 0.05) await env.DB.prepare('DELETE FROM admin_log WHERE id < (SELECT MAX(id) - 3000 FROM admin_log)').run();
+    } catch (_) { }
+    return res;
+  }
+  return adminRouteInner(request, env, path);
+}
+
+async function adminRouteInner(request, env, path) {
+  const [, b, c, d] = path, m = request.method;
 
   if (b === 'summary' && m === 'GET') return dashboard(request, env);
 

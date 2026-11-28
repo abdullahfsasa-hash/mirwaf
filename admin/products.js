@@ -39,7 +39,7 @@
     const q = h('input', { type: 'search', placeholder: 'بحث بالاسم أو SKU…', value: f.q, 'aria-label': 'بحث', oninput: A.debounce(e => { f.q = e.target.value.trim(); draw(); }, 150) });
     const sl = (key, opts, label) => h('select', { 'aria-label': label, onchange: e => { f[key] = e.target.value; draw(); } }, opts.map(([v, t]) => h('option', { value: v, selected: f[key] === v }, t)));
     el.replaceChildren(h('div', { class: 'row', style: 'margin-bottom:12px' }, h('div', { style: 'flex:1;min-width:200px' }, q), sl('cat', [['', 'كل التصنيفات'], ...Object.entries(A.CATS)], 'التصنيف'), sl('vis', [['', 'الكل'], ['visible', 'ظاهر'], ['hidden', 'مخفي'], ['low', 'مخزون منخفض']], 'الحالة'),
-      h('button', { class: 'btn pri', onclick: () => A.go('products/new') }, ic('plus'), 'منتج جديد')), bar, body);
+      h('a', { class: 'btn', href: '#products/log' }, 'سجل التعديلات'), h('button', { class: 'btn pri', onclick: () => A.go('products/new') }, ic('plus'), 'منتج جديد')), bar, body);
     draw();
   }
 
@@ -116,12 +116,29 @@
     const cl = () => el.querySelectorAll('.bad').forEach(x => x.classList.remove('bad'));
     const mark = x => { if (!x) return; x.classList.add('bad'); x.scrollIntoView({ behavior: 'smooth', block: 'center' }); x.focus && x.focus(); };
     const saveBtn = h('button', { class: 'btn pri', type: 'button' }, 'حفظ');
-    const save = async () => {
-      cl();
+    const buildBody = () => {
       const body = { price: F.price.value, old: F.old.value, stock: F.stock.value, cost: F.cost.value, sku: F.sku.value, hidden: hid.checked ? 1 : 0, status: stSel.value, bg: bgSet ? bgIn.value : '',
         name: F.name.value, en: F.en.value, cat: cat.value, brand: F.brand.value, sub: F.sub.value, short: F.short.value, desc: F.desc.value, prod: prodIn.value, exp: expIn.value };
       if (vRows.length) body.vstock = Object.fromEntries(vRows.map(r => [r.name, { stock: r.qty.value, status: r.st.value }]));
       if (custom) body.imgs = imgs; else if (imgsDirty) body.imgs = imgs;
+      return body;
+    };
+    // مسودة تلقائية: أي شي تكتبه ينحفظ في الجهاز لين ينجح الحفظ، عشان ما يضيع لو انقطع النت أو صار خطأ
+    const DK = 'mw.draft.' + (isNew ? 'new' : p.id);
+    let base0 = null; // حالة الصفحة عند الفتح: ما نحفظ مسودة إلا إذا تغيّر شي فعلًا
+    const putDraft = A.debounce(() => { if (!document.body.contains(saveBtn)) return; const b = buildBody(); if (JSON.stringify(b) === base0) return; try { localStorage.setItem(DK, JSON.stringify({ at: Date.now(), body: b })); } catch (_) { } }, 400);
+    const dropDraft = () => { try { localStorage.removeItem(DK); } catch (_) { } };
+    const applyDraft = d => {
+      for (const k of ['price', 'old', 'stock', 'cost', 'sku', 'name', 'en', 'brand', 'sub', 'short', 'desc']) if (d[k] != null && F[k]) F[k].value = d[k];
+      if (d.cat) cat.value = d.cat; hid.checked = !!d.hidden; stSel.value = d.status || '';
+      if (d.bg) { bgSet = true; bgIn.value = d.bg; } else bgSet = false;
+      prodIn.value = d.prod || ''; expIn.value = d.exp || '';
+      if (d.vstock) vRows.forEach(r => { const x = d.vstock[r.name]; if (x) { r.qty.value = x.stock == null ? '' : x.stock; r.st.value = x.status || ''; } });
+      if (Array.isArray(d.imgs)) { imgs.length = 0; imgs.push(...d.imgs); imgsDirty = true; replaceOrig = false; drawImgs(); } else paintBg();
+    };
+    const save = async () => {
+      cl();
+      const body = buildBody();
       if (F.name.value.trim().length < 2) { mark(F.name); return A.toast('اكتب اسم المنتج', true); }
       if (!(Number(F.price.value) >= 1)) { mark(F.price); return A.toast('اكتب السعر (رقم صحيح)', true); }
       if (prodIn.value && expIn.value && expIn.value <= prodIn.value) { mark(expIn); return A.toast('تاريخ الانتهاء لازم يكون بعد تاريخ الإنتاج', true); }
@@ -130,7 +147,8 @@
       saveBtn.disabled = true; saveBtn.textContent = 'جاري الحفظ…';
       const x = await A.save(isNew ? 'products' : 'products/' + encodeURIComponent(p.id), { method: 'POST', body }, 'تم حفظ المنتج ✓');
       saveBtn.disabled = false; saveBtn.textContent = 'حفظ';
-      if (x.ok) return A.go('products');
+      if (x.ok) { dropDraft(); return A.go('products'); }
+      putDraft();
       const map = { price: F.price, old: F.old, stock: F.stock, cost: F.cost, sku: F.sku, name: F.name, cat, bg: bgIn, prod: prodIn, exp: expIn };
       if (x.field === 'img') A.toast('أضف صورة واحدة على الأقل', true);
       else if (x.field === 'vstock') mark(vRows[0] && vRows[0].qty);
@@ -165,7 +183,39 @@
       h('div', { class: 'fab-save' }, saveBtn, h('a', { class: 'btn', href: '#products' }, 'إلغاء')));
     F.stock.value = p.stock == null ? '' : p.stock;
     F.old.value = p.old ? p.old : '';
+    let draft = null; try { draft = JSON.parse(localStorage.getItem(DK) || 'null'); } catch (_) { }
+    if (draft && draft.body && Date.now() - draft.at < 30 * 864e5) {
+      const bar = h('div', { class: 'callout info', style: 'margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap' }, h('b', {}, 'عندك تعديلات على هذا المنتج ما انحفظت (' + new Date(draft.at).toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' }) + ').'),
+        h('button', { class: 'btn sm pri', type: 'button', onclick: () => { applyDraft(draft.body); bar.remove(); A.toast('رجعت التعديلات. راجعها واضغط «حفظ»'); } }, 'استرجاعها'),
+        h('button', { class: 'btn sm', type: 'button', onclick: () => { dropDraft(); bar.remove(); } }, 'تجاهل'));
+      el.firstChild.after(bar);
+    }
+    base0 = JSON.stringify(buildBody());
+    const root = el.lastElementChild && el.lastElementChild.previousElementSibling; // شبكة الحقول
+    [root, el.querySelector('.fab-save')].forEach(n => n && (n.addEventListener('input', putDraft), n.addEventListener('change', putDraft)));
   }
 
-  A.views.products = (el, rest) => rest[0] ? editor(el, rest[0]) : list(el);
+  // سجل تعديلات المنتجات (كل محاولة حفظ، ناجحة أو فاشلة)
+  const ACT = { update: 'تعديل', create: 'إضافة', delete: 'حذف', bulk: 'تعديل جماعي', duplicate: 'نسخ' };
+  const ERR = { price: 'السعر', old: 'السعر قبل الخصم', stock: 'الكمية', cost: 'التكلفة', sku: 'SKU', name: 'الاسم', cat: 'التصنيف', img: 'الصورة', bg: 'لون الخلفية', vstock: 'مخزون الألوان', prod: 'تاريخ الإنتاج', exp: 'تاريخ الانتهاء' };
+  async function logView(el) {
+    const [r, pr] = await Promise.all([api('log'), api('products')]);
+    if (!r.ok) return el.replaceChildren(A.empty('box', 'تعذّر تحميل السجل'));
+    const names = Object.fromEntries((pr.products || []).map(x => [x.id, x.name]));
+    const why = e => { const [code, f] = String(e || '').split(':'); return f ? 'خطأ في خانة: ' + (ERR[f] || f) : code === 'not_found' ? 'المنتج غير موجود' : code === 'unauthorized' ? 'انتهت الجلسة' : code || 'خطأ'; };
+    const rows = r.log.map(x => {
+      let body = null; try { body = JSON.parse(x.body || 'null'); } catch (_) { }
+      const det = body && typeof body === 'object' ? Object.entries(body).filter(([k]) => k !== 'vstock' && k !== 'imgs').map(([k, v]) => k + ': ' + String(v).slice(0, 60)).join(' · ') : '';
+      return h('tr', {}, h('td', { class: 'num sm' }, new Date(x.ts).toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'short', timeStyle: 'short' })),
+        h('td', {}, names[x.pid] || x.pid || '—'), h('td', {}, ACT[x.act] || x.act),
+        h('td', {}, x.ok ? h('span', { class: 'badge b-ok' }, 'انحفظ ✓') : h('span', { class: 'badge b-bad' }, 'ما انحفظ: ' + why(x.err))),
+        h('td', { class: 'sm mut', style: 'max-width:420px;white-space:normal' }, det),
+        h('td', {}, !x.ok && x.act === 'update' && body ? h('button', { class: 'btn sm', onclick: async () => { const y = await A.save('products/' + encodeURIComponent(x.pid), { method: 'POST', body }, 'انحفظ الحين ✓'); if (y.ok) A.reload(); } }, 'أعد الحفظ') : null));
+    });
+    el.replaceChildren(h('div', { class: 'row', style: 'margin-bottom:14px' }, h('a', { class: 'btn sm', href: '#products' }, '→ المنتجات'), h('h2', { style: 'margin:0;font-size:20px' }, 'سجل تعديلات المنتجات')),
+      rows.length ? h('div', { class: 'tw' }, h('table', {}, h('thead', {}, h('tr', {}, h('th', {}, 'الوقت'), h('th', {}, 'المنتج'), h('th', {}, 'العملية'), h('th', {}, 'النتيجة'), h('th', {}, 'البيانات'), h('th', {}, ''))), h('tbody', {}, rows)))
+        : A.empty('box', 'ما فيه تعديلات مسجلة بعد', 'من الحين، كل حفظ (ناجح أو فاشل) يتسجل هنا'));
+  }
+
+  A.views.products = (el, rest) => rest[0] === 'log' ? logView(el) : rest[0] ? editor(el, rest[0]) : list(el);
 })();
